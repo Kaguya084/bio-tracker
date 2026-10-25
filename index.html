@@ -1,0 +1,1140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>智能健康助手</title>
+<style>
+  :root {
+    --bg: #f7eef1;
+    --card: #fffdfa;
+    --rose: #b4546b;
+    --rose-light: #e8b4c0;
+    --rose-pale: #f3d9df;
+    --navy: #3d4266;
+    --ink: #4a3b42;
+    --muted: #a08a92;
+    --green: #6fae7e;
+    --amber: #d99a4e;
+    --shadow: 0 8px 24px rgba(180, 84, 107, .12);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: linear-gradient(160deg, #efe3e8 0%, #f7eef1 40%, #fdf6f0 100%);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 24px 12px;
+    color: var(--ink);
+  }
+  .phone {
+    width: 100%;
+    max-width: 400px;
+    height: 820px;
+    max-height: calc(100vh - 32px);
+    background: var(--bg);
+    border-radius: 36px;
+    box-shadow: 0 24px 60px rgba(61, 66, 102, .25), 0 0 0 8px #2f3349;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+  /* ---------- header ---------- */
+  .header {
+    padding: 22px 20px 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .header h1 { font-size: 20px; color: var(--navy); font-weight: 700; }
+  .header .sub { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .avatar {
+    width: 40px; height: 40px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--rose), var(--rose-light));
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 17px;
+  }
+  /* ---------- scroll area ---------- */
+  .scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 16px 90px;
+    scrollbar-width: none;
+  }
+  .scroll::-webkit-scrollbar { display: none; }
+
+  /* ---------- hero cards ---------- */
+  .hero-row { display: flex; gap: 12px; margin-bottom: 12px; }
+  .card {
+    background: var(--card);
+    border-radius: 18px;
+    box-shadow: var(--shadow);
+    padding: 14px;
+  }
+  .hero-row .card { flex: 1; }
+  .card-title {
+    font-size: 13px; font-weight: 600; color: var(--navy);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .ring-wrap { display: flex; justify-content: center; padding: 8px 0 2px; }
+  .ring-value { font-size: 15px; font-weight: 700; fill: var(--rose); }
+  .ring-unit { font-size: 9px; fill: var(--muted); }
+  .bars-wrap { display: flex; align-items: flex-end; gap: 4px; height: 74px; padding: 10px 4px 4px; }
+  .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; justify-content: flex-end; }
+  .bar { width: 100%; border-radius: 5px 5px 2px 2px; transition: height .5s ease; }
+  .bar-label { font-size: 9px; color: var(--muted); }
+  .card-note { font-size: 10px; color: var(--muted); margin-top: 6px; text-align: center; }
+
+  .trend-card { margin-bottom: 12px; padding-bottom: 8px; }
+  .trend-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .legend { display: flex; gap: 10px; font-size: 10px; color: var(--muted); }
+  .legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; margin-right: 3px; vertical-align: middle; }
+
+  /* ---------- 喝水 ---------- */
+  .bottle-wrap { display: flex; flex-direction: column; align-items: center; padding: 6px 0 2px; }
+  .bottle-txt { font-size: 11px; color: var(--muted); margin-top: 7px; }
+  .bottle-txt b { color: var(--rose); font-size: 14px; }
+  .water-quick { display: flex; gap: 6px; margin-top: 10px; }
+  .water-quick button {
+    flex: 1; border: 1px solid var(--rose-pale); background: #fff; color: var(--rose);
+    border-radius: 10px; padding: 7px 0; font-size: 12px; cursor: pointer; font-family: inherit;
+  }
+  .water-quick button:active { background: var(--rose-pale); }
+  .cups { display: flex; gap: 4px; justify-content: center; margin-top: 8px; height: 14px; }
+  .cups i { width: 8px; height: 12px; border-radius: 2px 2px 4px 4px; background: #a9d6e8; border: 1px solid #7cc0d8; }
+
+  /* ---------- 卡路里 ---------- */
+  .kcal-head { display: flex; align-items: baseline; justify-content: center; gap: 4px; padding: 12px 0 2px; }
+  .kcal-head b { font-size: 22px; color: var(--rose); font-weight: 700; }
+  .kcal-head span { font-size: 11px; color: var(--muted); }
+  .kcal-bar { height: 11px; border-radius: 8px; background: var(--rose-pale); overflow: hidden; margin-top: 12px; }
+  .kcal-bar i { display: block; height: 100%; background: linear-gradient(90deg, #e8b4c0, #b4546b); transition: width .6s ease; }
+  .kcal-meta { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); margin-top: 6px; }
+
+  /* ---------- 饮食记录 ---------- */
+  .food-row { display: flex; gap: 8px; margin-top: 10px; }
+  .food-row input {
+    flex: 1; min-width: 0; border: 1px solid var(--rose-pale); border-radius: 10px;
+    padding: 8px 10px; font-size: 13px; outline: none; background: #fff; font-family: inherit; color: var(--ink);
+  }
+  .food-row input:focus { border-color: var(--rose-light); }
+  .suggest { display: flex; gap: 6px; overflow-x: auto; margin-top: 8px; padding-bottom: 2px; scrollbar-width: none; }
+  .suggest::-webkit-scrollbar { display: none; }
+  .eval-box {
+    margin-top: 10px; padding: 11px 13px; border-radius: 12px; background: #fff5f7;
+    border: 1px dashed var(--rose-light); font-size: 12px; line-height: 1.8; display: none;
+  }
+  .eval-box.show { display: block; }
+  .eval-box .num { color: var(--rose); font-weight: 700; font-size: 15px; }
+  .eval-box .warn { color: var(--amber); }
+  .meal-item {
+    display: flex; align-items: center; gap: 10px; background: var(--card);
+    border-radius: 14px; padding: 10px 14px; margin-bottom: 8px; box-shadow: var(--shadow);
+  }
+  .meal-item .meal-info { flex: 1; }
+  .meal-item .meal-info b { font-size: 13px; color: var(--navy); font-weight: 600; display: block; }
+  .meal-item .meal-info span { font-size: 11px; color: var(--muted); }
+  .meal-item .kcal { font-size: 14px; font-weight: 700; color: var(--rose); flex-shrink: 0; }
+  .del-btn { border: none; background: none; color: var(--muted); font-size: 16px; cursor: pointer; padding: 0 2px; }
+  .del-btn:active { color: var(--rose); }
+
+  /* ---------- tabs ---------- */
+  .tabs {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    background: #fffdfa;
+    border-top: 1px solid var(--rose-pale);
+    display: flex;
+    padding: 8px 0 14px;
+    z-index: 10;
+  }
+  .tab {
+    flex: 1; text-align: center; font-size: 11px; color: var(--muted);
+    cursor: pointer; transition: color .2s;
+  }
+  .tab .tab-ico { font-size: 20px; display: block; margin-bottom: 2px; }
+  .tab.active { color: var(--rose); font-weight: 600; }
+
+  .view { display: none; animation: fadeIn .25s ease; }
+  .view.active { display: block; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  .section-title { font-size: 14px; font-weight: 700; color: var(--navy); margin: 16px 2px 10px; }
+
+  /* ---------- record form ---------- */
+  .form-card { margin-bottom: 12px; }
+  .form-row { display: flex; gap: 10px; margin-top: 10px; }
+  .field { flex: 1; }
+  .field label { font-size: 11px; color: var(--muted); display: block; margin-bottom: 4px; }
+  .field input, .field select {
+    width: 100%; border: 1px solid var(--rose-pale); border-radius: 10px;
+    padding: 8px 10px; font-size: 13px; background: #fff; color: var(--ink);
+    outline: none; font-family: inherit;
+  }
+  .field input:focus, .field select:focus { border-color: var(--rose-light); }
+  .btn {
+    width: 100%; margin-top: 14px; border: none; border-radius: 12px;
+    background: linear-gradient(135deg, var(--rose), #c96a80);
+    color: #fff; font-size: 14px; font-weight: 600; padding: 11px;
+    cursor: pointer; font-family: inherit;
+    box-shadow: 0 6px 14px rgba(180, 84, 107, .3);
+  }
+  .btn:active { transform: scale(.98); }
+
+  .record-list { margin-top: 6px; }
+  .record-item {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--card); border-radius: 14px; padding: 11px 14px;
+    margin-bottom: 8px; box-shadow: var(--shadow);
+  }
+  .record-ico {
+    width: 34px; height: 34px; border-radius: 10px; font-size: 16px;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .record-ico.sleep { background: #eceffb; }
+  .record-ico.exercise { background: var(--rose-pale); }
+  .record-info { flex: 1; }
+  .record-info b { font-size: 13px; color: var(--navy); font-weight: 600; display: block; }
+  .record-info span { font-size: 11px; color: var(--muted); }
+  .record-tag { font-size: 10px; padding: 3px 8px; border-radius: 20px; background: var(--rose-pale); color: var(--rose); }
+  .record-tag.good { background: #e2f0e5; color: var(--green); }
+  .record-tag.warn { background: #f7ead8; color: var(--amber); }
+
+  /* ---------- insight cards ---------- */
+  .insight {
+    background: var(--card); border-radius: 16px; padding: 14px 16px;
+    margin-bottom: 10px; box-shadow: var(--shadow);
+    border-left: 4px solid var(--rose-light);
+  }
+  .insight.good { border-left-color: var(--green); }
+  .insight.warn { border-left-color: var(--amber); }
+  .insight b { font-size: 13px; color: var(--navy); display: block; margin-bottom: 4px; }
+  .insight p { font-size: 12px; color: var(--ink); line-height: 1.7; }
+  .insight p em { font-style: normal; color: var(--rose); font-weight: 600; }
+
+  /* ---------- chat ---------- */
+  .chat-box { display: flex; flex-direction: column; }
+  .chat-area { flex: 1; }
+  .msg { display: flex; margin-bottom: 12px; gap: 8px; }
+  .msg .bubble {
+    max-width: 78%; padding: 10px 13px; border-radius: 16px;
+    font-size: 13px; line-height: 1.7;
+  }
+  .msg.ai .bubble { background: var(--card); box-shadow: var(--shadow); border-top-left-radius: 4px; }
+  .msg.user { flex-direction: row-reverse; }
+  .msg.user .bubble { background: linear-gradient(135deg, var(--rose), #c96a80); color: #fff; border-top-right-radius: 4px; }
+  .msg .who {
+    width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 14px;
+  }
+  .msg.ai .who { background: #eceffb; }
+  .msg.user .who { background: var(--rose-pale); }
+  .plan-item {
+    display: flex; gap: 8px; margin-top: 8px; font-size: 12px; line-height: 1.6;
+  }
+  .plan-item .day {
+    flex-shrink: 0; background: var(--rose-pale); color: var(--rose);
+    border-radius: 8px; padding: 2px 8px; font-size: 11px; font-weight: 600; height: fit-content;
+  }
+  .quick-row { display: flex; gap: 8px; overflow-x: auto; padding: 4px 0 10px; scrollbar-width: none; }
+  .quick-row::-webkit-scrollbar { display: none; }
+  .chip {
+    flex-shrink: 0; background: var(--card); border: 1px solid var(--rose-pale);
+    color: var(--rose); border-radius: 20px; padding: 7px 14px;
+    font-size: 12px; cursor: pointer; font-family: inherit;
+  }
+  .input-bar {
+    position: sticky; bottom: 0; display: flex; gap: 8px;
+    background: var(--bg); padding: 8px 0 2px;
+  }
+  .input-bar input {
+    flex: 1; border: 1px solid var(--rose-pale); border-radius: 20px;
+    padding: 10px 16px; font-size: 13px; outline: none; background: #fff; font-family: inherit;
+  }
+  .send-btn {
+    width: 42px; height: 42px; border-radius: 50%; border: none;
+    background: linear-gradient(135deg, var(--rose), #c96a80); color: #fff;
+    font-size: 16px; cursor: pointer; flex-shrink: 0;
+  }
+  .typing span {
+    display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--rose-light); margin-right: 3px; animation: blink 1.2s infinite;
+  }
+  .typing span:nth-child(2) { animation-delay: .2s; }
+  .typing span:nth-child(3) { animation-delay: .4s; }
+  @keyframes blink { 0%, 80%, 100% { opacity: .3; } 40% { opacity: 1; } }
+
+  .tag-row { display: flex; gap: 8px; margin: 14px 2px 4px; }
+  .tag-row span {
+    font-size: 11px; padding: 5px 12px; border-radius: 20px;
+    background: var(--rose-pale); color: var(--rose);
+  }
+  .float-leaf { position: absolute; font-size: 14px; opacity: .5; }
+</style>
+</head>
+<body>
+
+<div class="phone">
+  <div class="header">
+    <div>
+      <h1>智能健康助手</h1>
+      <div class="sub">10月25日 周日 · 把记录变成看得懂的变化</div>
+    </div>
+    <div class="avatar">🌸</div>
+  </div>
+
+  <div class="scroll" id="scroll">
+
+    <!-- ============ 首页概览 ============ -->
+    <div class="view active" id="view-home">
+      <div class="hero-row">
+        <div class="card">
+          <div class="card-title">🏃 运动记录</div>
+          <div class="ring-wrap">
+            <svg width="92" height="92" viewBox="0 0 92 92">
+              <circle cx="46" cy="46" r="38" fill="none" stroke="#f3d9df" stroke-width="9"/>
+              <circle id="ring" cx="46" cy="46" r="38" fill="none" stroke="#b4546b" stroke-width="9"
+                      stroke-linecap="round" stroke-dasharray="238.7" stroke-dashoffset="238.7"
+                      transform="rotate(-90 46 46)" style="transition: stroke-dashoffset .8s ease"/>
+              <text id="ringText" x="46" y="44" text-anchor="middle" class="ring-value">0</text>
+              <text x="46" y="58" text-anchor="middle" class="ring-unit">/ 30 分钟</text>
+            </svg>
+          </div>
+          <div class="card-note" id="exerciseNote">今天还没动起来哦</div>
+        </div>
+        <div class="card">
+          <div class="card-title">🌙 睡眠记录</div>
+          <div class="bars-wrap" id="sleepBars"></div>
+          <div class="card-note" id="sleepNote">最近 7 天睡眠时长</div>
+        </div>
+      </div>
+
+      <div class="hero-row">
+        <div class="card">
+          <div class="card-title">💧 喝水记录</div>
+          <div class="bottle-wrap">
+            <svg width="46" height="76" viewBox="0 0 46 76">
+              <rect x="17" y="2" width="12" height="7" rx="2" fill="#c9b6bd"/>
+              <path d="M14 9 h18 a4 4 0 0 1 4 4 v56 a6 6 0 0 1 -6 6 h-14 a6 6 0 0 1 -6 -6 v-56 a4 4 0 0 1 4 -4 z"
+                    fill="#fff" stroke="#d8c6cd" stroke-width="2"/>
+              <clipPath id="bottleClip">
+                <path d="M11 16 h24 v52 a6 6 0 0 1 -6 6 h-12 a6 6 0 0 1 -6 -6 z"/>
+              </clipPath>
+              <g clip-path="url(#bottleClip)">
+                <rect id="waterFill" x="8" y="74" width="30" height="0" fill="#8fc9dd"/>
+                <path id="wave" d="" fill="#8fc9dd" opacity=".6"/>
+              </g>
+            </svg>
+            <div class="bottle-txt"><b id="waterNow">0</b> / <span id="waterGoalTxt">2000</span> ml</div>
+          </div>
+          <div class="cups" id="cupRow"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">🍚 卡路里摄入</div>
+          <div class="kcal-head">
+            <b id="kcalNow">0</b><span> / <span id="kcalGoalTxt">2000</span> kcal</span>
+          </div>
+          <div class="kcal-bar"><i id="kcalBar" style="width:0%"></i></div>
+          <div class="kcal-meta">
+            <span id="kcalLeft">还可摄入 2000</span>
+            <span id="mealCount">今天 0 条饮食</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card trend-card">
+        <div class="trend-head">
+          <div class="card-title">📈 我的变化 · 精力指数</div>
+          <div class="legend">
+            <span><i style="background:#b4546b"></i>本周</span>
+            <span><i style="background:#c9b6bd; background-image:linear-gradient(90deg,#c9b6bd 60%,transparent 0);background-size:6px 2px"></i>上周</span>
+          </div>
+        </div>
+        <svg id="trendChart" width="100%" viewBox="0 0 340 130"></svg>
+      </div>
+
+      <div class="tag-row">
+        <span>生活记录</span><span>数据解释</span><span>行动反馈</span>
+      </div>
+
+      <div class="section-title">今日小结</div>
+      <div id="todayInsight"></div>
+    </div>
+
+    <!-- ============ 生活记录 ============ -->
+    <div class="view" id="view-log">
+      <div class="section-title">记一笔</div>
+      <div class="card form-card">
+        <div class="form-row">
+          <div class="field">
+            <label>昨晚几点睡</label>
+            <input type="time" id="fBedtime" value="23:30">
+          </div>
+          <div class="field">
+            <label>睡了多久（小时）</label>
+            <input type="number" id="fSleep" min="0" max="14" step="0.5" value="7">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field">
+            <label>今天运动</label>
+            <select id="fType">
+              <option>散步</option><option>慢跑</option><option>瑜伽</option>
+              <option>游泳</option><option>健身</option><option>骑行</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>运动多久（分钟）</label>
+            <input type="number" id="fExercise" min="0" max="300" step="5" value="30">
+          </div>
+        </div>
+        <button class="btn" onclick="addRecord()">保存今天的记录</button>
+      </div>
+
+      <div class="section-title">喝水记录</div>
+      <div class="card form-card">
+        <div class="form-row">
+          <div class="field">
+            <label>今日目标（ml）</label>
+            <input type="number" id="fWaterGoal" min="500" max="5000" step="100" value="2000"
+                   onchange="setGoal('water', this.value)">
+          </div>
+          <div class="field">
+            <label>自定义加水量（ml）</label>
+            <input type="number" id="fWaterCustom" min="0" max="2000" step="50" placeholder="如 300">
+          </div>
+        </div>
+        <div class="water-quick">
+          <button onclick="addWater(200)">+200ml</button>
+          <button onclick="addWater(250)">+250ml</button>
+          <button onclick="addWater(500)">+500ml</button>
+          <button onclick="addCustomWater()">+自定义</button>
+        </div>
+        <div class="water-quick" style="margin-top:6px">
+          <button onclick="addWater(-250)" style="color:var(--muted)">-250ml</button>
+          <button onclick="clearWater()" style="color:var(--muted)">清空今日</button>
+        </div>
+        <div class="card-note" id="waterNote">每天 7–8 杯（约 2000ml），少量多次效果最好</div>
+      </div>
+
+      <div class="section-title">饮食 · 卡路里评估</div>
+      <div class="card form-card">
+        <div class="form-row">
+          <div class="field">
+            <label>每日热量目标（kcal）</label>
+            <input type="number" id="fKcalGoal" min="800" max="4000" step="50" value="2000"
+                   onchange="setGoal('kcal', this.value)">
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:6px">
+          参考：轻体力活动成人约 1800–2200 kcal/天
+        </div>
+        <div class="food-row">
+          <input type="text" id="fFood" list="foodList" placeholder="吃了什么？如 米饭 / 鸡胸肉"
+                 oninput="previewFood()" onchange="estimateFood()">
+          <datalist id="foodList"></datalist>
+          <input type="number" id="fGrams" min="1" max="2000" step="5" value="100"
+                 style="width:82px;flex:none" oninput="previewFood()">
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:6px">
+          左侧填食物名称，右侧填克数（100g ≈ 2 两）
+        </div>
+        <div class="suggest" id="suggestRow"></div>
+        <div class="eval-box" id="evalBox"></div>
+        <button class="btn" onclick="estimateFood()">评估卡路里</button>
+      </div>
+
+      <div class="section-title">今天的饮食</div>
+      <div id="mealList"></div>
+
+      <div class="section-title">最近记录</div>
+      <div class="record-list" id="recordList"></div>
+    </div>
+
+    <!-- ============ 数据解释 ============ -->
+    <div class="view" id="view-insight">
+      <div class="section-title">这周的身体在说什么</div>
+      <div id="insightList"></div>
+      <div class="card trend-card">
+        <div class="card-title" style="margin-bottom:6px">对比一下：本周 vs 上周</div>
+        <div id="compareBox" style="font-size:12px; line-height:1.9; color:var(--ink)"></div>
+      </div>
+    </div>
+
+    <!-- ============ 行动反馈 ============ -->
+    <div class="view" id="view-action">
+      <div class="section-title" style="margin-bottom:6px">和助手聊聊</div>
+      <div class="chat-box">
+        <div class="chat-area" id="chatArea"></div>
+        <div class="quick-row" id="quickRow"></div>
+        <div class="input-bar">
+          <input type="text" id="chatInput" placeholder="说说你最近的状态…" onkeydown="if(event.key==='Enter')sendMsg()">
+          <button class="send-btn" onclick="sendMsg()">➤</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" data-view="view-home" onclick="switchTab(this,'view-home')">
+      <span class="tab-ico">🏠</span>今天
+    </div>
+    <div class="tab" data-view="view-log" onclick="switchTab(this,'view-log')">
+      <span class="tab-ico">📝</span>生活记录
+    </div>
+    <div class="tab" data-view="view-insight" onclick="switchTab(this,'view-insight')">
+      <span class="tab-ico">📊</span>数据解释
+    </div>
+    <div class="tab" data-view="view-action" onclick="switchTab(this,'view-action')">
+      <span class="tab-ico">💬</span>行动反馈
+    </div>
+  </div>
+</div>
+
+<script>
+/* ================= 数据层 ================= */
+const STORE_KEY = "health_buddy_v1";
+const today = new Date();
+function dateStr(offset) {
+  const d = new Date(today); d.setDate(d.getDate() + offset);
+  return d.toISOString().slice(0, 10);
+}
+// 预置最近 14 天示例数据（用户可自行覆盖今天的）
+/* ========== 食物热量库（每 100g 可食部 · 参考《中国食物成分表》） ========== */
+const FOODS = [
+  // 主食
+  { n: "米饭", k: 116, u: { l: "碗", g: 150 } },
+  { n: "白粥", k: 30 }, { n: "面条", k: 110 }, { n: "馒头", k: 223, u: { l: "个", g: 100 } },
+  { n: "全麦面包", k: 246 }, { n: "白吐司", k: 280 }, { n: "燕麦片", k: 377 },
+  { n: "玉米", k: 106 }, { n: "红薯", k: 86 }, { n: "紫薯", k: 82 }, { n: "土豆", k: 77 },
+  { n: "米粉", k: 96 }, { n: "河粉", k: 112 }, { n: "意大利面", k: 158 },
+  { n: "饺子", k: 240, u: { l: "个", g: 20 } }, { n: "包子", k: 227, u: { l: "个", g: 80 } },
+  { n: "馄饨", k: 200 }, { n: "油条", k: 388 }, { n: "披萨", k: 270 }, { n: "汉堡", k: 250 },
+  { n: "三明治", k: 250 }, { n: "炒饭", k: 180 }, { n: "年糕", k: 154 }, { n: "小米粥", k: 46 },
+  // 肉 / 蛋 / 豆制品
+  { n: "鸡胸肉", k: 133 }, { n: "鸡腿", k: 181 }, { n: "炸鸡", k: 300 },
+  { n: "猪瘦肉", k: 143 }, { n: "五花肉", k: 508 }, { n: "红烧肉", k: 470 },
+  { n: "牛肉", k: 106 }, { n: "牛腩", k: 332 }, { n: "羊肉", k: 203 },
+  { n: "三文鱼", k: 139 }, { n: "带鱼", k: 127 }, { n: "鲈鱼", k: 105 },
+  { n: "虾仁", k: 93 }, { n: "基围虾", k: 101 },
+  { n: "鸡蛋", k: 144, u: { l: "个", g: 50 } }, { n: "蛋白", k: 60 },
+  { n: "香肠", k: 508 }, { n: "培根", k: 181 }, { n: "火腿肠", k: 212 },
+  { n: "豆腐", k: 82 }, { n: "豆干", k: 140 }, { n: "腐竹", k: 459 },
+  // 蔬菜
+  { n: "西兰花", k: 36 }, { n: "菠菜", k: 24 }, { n: "生菜", k: 15 }, { n: "白菜", k: 17 },
+  { n: "青菜", k: 15 }, { n: "黄瓜", k: 16 }, { n: "番茄", k: 18 }, { n: "胡萝卜", k: 39 },
+  { n: "茄子", k: 21 }, { n: "洋葱", k: 40 }, { n: "蘑菇", k: 20 }, { n: "金针菇", k: 32 },
+  { n: "木耳", k: 27 }, { n: "南瓜", k: 22 }, { n: "冬瓜", k: 11 }, { n: "甜椒", k: 26 },
+  { n: "芦笋", k: 22 }, { n: "秋葵", k: 37 }, { n: "豆芽", k: 18 },
+  // 水果
+  { n: "苹果", k: 53, u: { l: "个", g: 200 } }, { n: "香蕉", k: 93, u: { l: "根", g: 120 } },
+  { n: "橙子", k: 48 }, { n: "葡萄", k: 45 }, { n: "西瓜", k: 31 }, { n: "草莓", k: 32 },
+  { n: "蓝莓", k: 57 }, { n: "猕猴桃", k: 61 }, { n: "梨", k: 51 }, { n: "火龙果", k: 60 },
+  { n: "芒果", k: 60 }, { n: "桃子", k: 48 }, { n: "哈密瓜", k: 34 }, { n: "柚子", k: 42 },
+  { n: "车厘子", k: 63 },
+  // 奶制品
+  { n: "全脂牛奶", k: 65 }, { n: "脱脂牛奶", k: 35 }, { n: "酸奶", k: 72 },
+  { n: "无糖酸奶", k: 60 }, { n: "奶酪", k: 328 }, { n: "豆浆", k: 31 }, { n: "奶粉", k: 480 },
+  // 坚果 / 零食
+  { n: "花生", k: 567 }, { n: "核桃", k: 646 }, { n: "杏仁", k: 578 }, { n: "腰果", k: 559 },
+  { n: "瓜子", k: 606 }, { n: "薯片", k: 548 }, { n: "饼干", k: 435 }, { n: "巧克力", k: 589 },
+  { n: "蛋糕", k: 350 }, { n: "冰淇淋", k: 200 }, { n: "牛肉干", k: 550 }, { n: "混合坚果", k: 600 },
+  // 饮料
+  { n: "可乐", k: 43 }, { n: "雪碧", k: 43 }, { n: "果汁", k: 46 }, { n: "奶茶", k: 70 },
+  { n: "黑咖啡", k: 2 }, { n: "拿铁", k: 47 }, { n: "绿茶", k: 1 }, { n: "运动饮料", k: 26 },
+  { n: "啤酒", k: 32 }, { n: "红酒", k: 83 }, { n: "白酒", k: 298 },
+  // 油脂调味
+  { n: "食用油", k: 899 }, { n: "黄油", k: 888 }, { n: "沙拉酱", k: 680 }, { n: "芝麻酱", k: 618 }
+];
+// 别名：让用户用口语也能查到
+const ALIASES = [
+  { n: "米饭", a: ["白饭", "大米饭", "饭"] },
+  { n: "鸡蛋", a: ["鸡蛋", "水煮蛋", "煎蛋", "荷包蛋"] },
+  { n: "全脂牛奶", a: ["牛奶", "纯牛奶", "鲜奶"] },
+  { n: "豆浆", a: ["豆浆", "黄豆浆"] },
+  { n: "鸡胸肉", a: ["鸡胸", "鸡脯肉"] },
+  { n: "苹果", a: ["苹果"] },
+  { n: "番茄", a: ["西红柿", "番茄"] },
+  { n: "土豆", a: ["马铃薯", "土豆", "洋芋"] },
+  { n: "红薯", a: ["地瓜", "番薯", "红薯"] },
+  { n: "食用油", a: ["油", "炒菜油", "花生油", "橄榄油"] }
+];
+function findFood(q) {
+  if (!q) return null;
+  const s = q.trim();
+  let hit = FOODS.find(f => f.n === s) || FOODS.find(f => f.n.includes(s)) || FOODS.find(f => s.includes(f.n));
+  if (hit) return hit;
+  const al = ALIASES.find(a => a.a.some(x => s.includes(x) || x.includes(s)));
+  return al ? FOODS.find(f => f.n === al.n) : null;
+}
+function kcalOf(k100, grams) { return Math.round(k100 * grams / 100); }
+
+const defaultData = {
+  days: {}, chatCount: 0, goals: { water: 2000, kcal: 2000 }
+};
+// 生成示例：上周睡得晚、本周逐步改善，运动量中等
+const sample = [
+  [-13, "23:50", 6.0, 20], [-12, "00:20", 5.5, 0], [-11, "23:40", 6.5, 30],
+  [-10, "00:10", 6.0, 0],  [-9,  "23:30", 7.0, 25], [-8,  "23:20", 7.5, 40],
+  [-7,  "23:00", 7.5, 30],
+  [-6,  "23:40", 6.5, 20], [-5,  "00:30", 5.5, 0],  [-4,  "23:50", 6.0, 35],
+  [-3,  "23:30", 6.5, 0],  [-2,  "23:20", 7.0, 40], [-1,  "23:10", 7.5, 25]
+];
+const waterSeed = [1600, 1200, 1800, 900, 2000, 1700, 1500, 1100, 800, 1900, 1300, 2100, 1750];
+const mealSeed = [
+  [["米饭", 150], ["鸡蛋", 100], ["全脂牛奶", 250], ["苹果", 180]],
+  [["白粥", 300], ["馒头", 100], ["香蕉", 120]],
+  [["面条", 200], ["鸡胸肉", 120], ["西兰花", 150]],
+  [["米饭", 180], ["红烧肉", 80], ["青菜", 150], ["可乐", 300]],
+  [["全麦面包", 100], ["全脂牛奶", 250], ["苹果", 200]],
+  [["米饭", 200], ["西兰花", 150], ["三文鱼", 100]],
+  [["燕麦片", 60], ["香蕉", 150], ["鸡蛋", 100]]
+];
+sample.forEach(([off, bed, hrs, ex], i) => {
+  const meals = mealSeed[i % mealSeed.length].map(([name, g]) => {
+    const f = findFood(name);
+    return { name, grams: g, kcal: f ? kcalOf(f.k, g) : null, time: "" };
+  });
+  defaultData.days[dateStr(off)] = {
+    bedtime: bed, sleep: hrs, exercise: ex, type: ex ? "慢跑" : "", mood: hrs >= 7 ? 3 : 2,
+    water: waterSeed[i % waterSeed.length], meals
+  };
+});
+
+let data;
+try {
+  data = JSON.parse(localStorage.getItem(STORE_KEY)) || null;
+} catch (e) { data = null; }
+if (!data || !data.days) data = defaultData;
+function save() { localStorage.setItem(STORE_KEY, JSON.stringify(data)); }
+
+// 兼容旧数据：补齐喝水 / 饮食 / 目标字段
+if (!data.goals) data.goals = { water: 2000, kcal: 2000 };
+if (!data.goals.water) data.goals.water = 2000;
+if (!data.goals.kcal) data.goals.kcal = 2000;
+Object.keys(data.days).forEach(k => {
+  const d = data.days[k];
+  if (typeof d.water !== "number") d.water = 0;
+  if (!Array.isArray(d.meals)) d.meals = [];
+});
+
+/* ========== 喝水 ========== */
+function todayRec() {
+  const d = dateStr(0);
+  if (!data.days[d]) data.days[d] = { bedtime: "23:30", sleep: 0, exercise: 0, type: "", mood: 2, water: 0, meals: [] };
+  return data.days[d];
+}
+function addWater(ml) {
+  const r = todayRec();
+  r.water = Math.max(0, (r.water || 0) + ml);
+  save(); renderAll();
+}
+function addCustomWater() {
+  const el = document.getElementById("fWaterCustom");
+  const v = parseInt(el.value, 10) || 0;
+  if (v <= 0) return;
+  addWater(v); el.value = "";
+}
+function clearWater() { todayRec().water = 0; save(); renderAll(); }
+function setGoal(k, v) {
+  const n = parseInt(v, 10);
+  if (!n || n < 100) return;
+  data.goals[k] = n; save(); renderAll();
+}
+
+/* ========== 饮食 / 卡路里评估 ========== */
+function mealTotal(day) { return ((data.days[day] || {}).meals || []).reduce((a, b) => a + b.kcal, 0); }
+// 只统计有饮食记录的天，避免 0 值拉低平均
+function avgKcal(days) {
+  const v = days.map(d => ((data.days[d] || {}).meals || []).length ? mealTotal(d) : null).filter(x => x != null);
+  return v.length ? Math.round(avg(v)) : 0;
+}
+function previewFood() {
+  const q = document.getElementById("fFood").value.trim();
+  const g = parseFloat(document.getElementById("fGrams").value) || 0;
+  if (q && g > 0 && findFood(q)) estimateFood();
+}
+function estimateFood() {
+  const q = document.getElementById("fFood").value.trim();
+  const g = parseFloat(document.getElementById("fGrams").value) || 0;
+  const box = document.getElementById("evalBox");
+  box.classList.add("show");
+  if (!q) { box.innerHTML = '<span class="warn">先填一下食物名称～</span>'; return; }
+  if (g <= 0) { box.innerHTML = '<span class="warn">克数要大于 0（100g ≈ 2 两）</span>'; return; }
+  const f = findFood(q);
+  if (!f) {
+    box.innerHTML = `「${q}」暂时没收录在我的食物库里 🤔<br>
+      可以换个更通用的名字（比如「米饭」「鸡胸肉」「苹果」），<br>
+      或者手动填写每 100g 的热量：
+      <div class="food-row" style="margin-top:8px">
+        <input type="number" id="fManualK" min="0" placeholder="每 100g 热量 kcal">
+        <button class="chip" style="flex:none" onclick="manualCalc('${q}', ${g})">计算</button>
+      </div>`;
+    return;
+  }
+  const total = kcalOf(f.k, g);
+  const unit = f.u ? `（约 ${(g / f.u.g).toFixed(1)} ${f.u.l}）` : "";
+  const pct = Math.round(total / data.goals.kcal * 100);
+  box.innerHTML = `🍽 <b>${f.n}</b> ${g}g ${unit}<br>
+    参考热量 <span class="num">${f.k}</span> kcal/100g →
+    这一份约 <span class="num">${total}</span> kcal
+    <span style="color:var(--muted)">（占今日目标 ${pct}%）</span><br>
+    <span style="color:var(--muted);font-size:11px">* 参考常见做法，实际会因烹饪方式浮动</span>
+    <div style="margin-top:8px">
+      <button class="chip" onclick="addMeal('${f.n}', ${g}, ${total})">➕ 加入今天的记录</button>
+    </div>`;
+}
+function manualCalc(name, grams) {
+  const k = parseFloat(document.getElementById("fManualK").value);
+  if (!k || k <= 0) return;
+  const total = kcalOf(k, grams);
+  document.getElementById("evalBox").innerHTML =
+    `🍽 <b>${name}</b> ${grams}g（自定义 ${k} kcal/100g）<br>
+     这一份约 <span class="num">${total}</span> kcal
+     <div style="margin-top:8px">
+       <button class="chip" onclick="addMeal('${name}', ${grams}, ${total})">➕ 加入今天的记录</button>
+     </div>`;
+}
+function addMeal(name, grams, kcal) {
+  todayRec().meals.push({
+    name, grams, kcal,
+    time: new Date().toTimeString().slice(0, 5)
+  });
+  save();
+  document.getElementById("fFood").value = "";
+  document.getElementById("evalBox").classList.remove("show");
+  renderAll();
+}
+function delMeal(i) { todayRec().meals.splice(i, 1); save(); renderAll(); }
+
+/* ================= 工具 ================= */
+const last7 = () => Array.from({length:7}, (_, i) => dateStr(i - 6));
+const prev7 = () => Array.from({length:7}, (_, i) => dateStr(i - 13));
+function avg(arr) { return arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0; }
+function getStats(days) {
+  const recs = days.map(d => data.days[d]).filter(Boolean);
+  return {
+    sleep: avg(recs.map(r => r.sleep)),
+    exercise: avg(recs.map(r => r.exercise)),
+    lateNights: recs.filter(r => r.bedtime > "23:30").length,
+    activeDays: recs.filter(r => r.exercise >= 20).length,
+    n: recs.length
+  };
+}
+// 精力指数 = 睡眠达标(60%) + 运动达标(40%)，满分 100
+function energy(r) {
+  if (!r) return null;
+  const s = Math.min(r.sleep / 7.5, 1) * 60;
+  const e = Math.min(r.exercise / 30, 1) * 40;
+  return Math.round(s + e);
+}
+
+/* ================= 首页渲染 ================= */
+function renderHome() {
+  // 运动环
+  const t = data.days[dateStr(0)];
+  const ex = t ? t.exercise : 0;
+  const pct = Math.min(ex / 30, 1);
+  document.getElementById("ring").style.strokeDashoffset = 238.7 * (1 - pct);
+  document.getElementById("ringText").textContent = ex;
+  document.getElementById("exerciseNote").textContent =
+    ex === 0 ? "今天还没动起来哦" :
+    ex < 20 ? "有起步，再坚持 10 分钟更好" :
+    ex < 30 ? "不错，离目标只差一点点" : "达标啦，状态在线 💪";
+
+  // 睡眠柱状图
+  const wrap = document.getElementById("sleepBars");
+  wrap.innerHTML = "";
+  const week = ["日","一","二","三","四","五","六"];
+  last7().forEach(d => {
+    const r = data.days[d];
+    const h = r ? r.sleep : 0;
+    const col = document.createElement("div");
+    col.className = "bar-col";
+    const bar = document.createElement("div");
+    bar.className = "bar";
+    const bh = Math.max(h / 9 * 100, 4);
+    bar.style.height = bh + "%";
+    bar.style.background = h === 0 ? "#efe0e5" : h >= 7 ? "#b4546b" : h >= 6 ? "#d99a8f" : "#e8b4c0";
+    const lbl = document.createElement("div");
+    lbl.className = "bar-label";
+    lbl.textContent = week[new Date(d).getDay()];
+    col.appendChild(bar); col.appendChild(lbl);
+    wrap.appendChild(col);
+  });
+  const s7 = getStats(last7());
+  document.getElementById("sleepNote").textContent =
+    "近 7 天平均 " + s7.sleep.toFixed(1) + " 小时" + (s7.sleep < 7 ? "，还差一点点" : "，很棒");
+
+  // 喝水
+  const wGoal = data.goals.water || 2000;
+  const wNow = (t && typeof t.water === "number") ? t.water : 0;
+  const wPct = Math.min(wNow / wGoal, 1);
+  const wh = Math.round(wPct * 58);
+  const wTop = 74 - wh;
+  const fill = document.getElementById("waterFill");
+  fill.setAttribute("y", wTop);
+  fill.setAttribute("height", wh);
+  document.getElementById("wave").setAttribute("d",
+    wh > 0 ? `M8 ${wTop + 3} q 7.5 -4 15 0 t 15 0 v 6 h -30 z` : "");
+  document.getElementById("waterNow").textContent = wNow;
+  document.getElementById("waterGoalTxt").textContent = wGoal;
+  const cups = document.getElementById("cupRow");
+  const cN = Math.min(Math.floor(wNow / 250), 12);
+  cups.innerHTML = Array.from({ length: cN }, () => "<i></i>").join("") ||
+    `<span style="font-size:10px;color:var(--muted)">还没喝水，先来一杯吧 🥤</span>`;
+  document.getElementById("waterNote").textContent =
+    wPct >= 1 ? "今日饮水已达标，很棒 💧" :
+    wPct >= 0.6 ? `已喝 ${Math.round(wPct * 100)}%，再来 ${Math.ceil((wGoal - wNow) / 250)} 杯就达标` :
+    `只喝了 ${Math.round(wPct * 100)}%，记得少量多次补水`;
+
+  // 卡路里
+  const kGoal = data.goals.kcal || 2000;
+  const kNow = mealTotal(dateStr(0));
+  document.getElementById("kcalNow").textContent = kNow;
+  document.getElementById("kcalGoalTxt").textContent = kGoal;
+  document.getElementById("kcalBar").style.width = Math.min(kNow / kGoal, 1) * 100 + "%";
+  const left = kGoal - kNow;
+  document.getElementById("kcalLeft").textContent = left >= 0 ? `还可摄入 ${left}` : `已超出 ${-left}`;
+  document.getElementById("mealCount").textContent = `今天 ${(t && t.meals) ? t.meals.length : 0} 条饮食`;
+
+  // 趋势图
+  drawTrend();
+  // 今日小结
+  renderTodayInsight();
+}
+
+function drawTrend() {
+  const svg = document.getElementById("trendChart");
+  const W = 340, H = 130, padX = 22, padY = 18;
+  const thisW = last7().map(d => energy(data.days[d]));
+  const prevW = prev7().map(d => energy(data.days[d]));
+  const x = i => padX + i * (W - padX * 2) / 6;
+  const y = v => H - padY - (v / 100) * (H - padY * 2);
+  const pts = arr => arr.map((v, i) => v == null ? null : [x(i), y(v)]);
+  function path(p, smooth) {
+    let out = "";
+    for (let i = 0; i < p.length; i++) {
+      if (!p[i]) continue;
+      out += (out ? " L " : "M ") + p[i][0].toFixed(1) + " " + p[i][1].toFixed(1);
+    }
+    return out;
+  }
+  const pt = pts(thisW), pp = pts(prevW);
+  let html = "";
+  // 网格
+  [0, 50, 100].forEach(v => {
+    html += `<line x1="${padX}" y1="${y(v)}" x2="${W-padX}" y2="${y(v)}" stroke="#f0e2e7" stroke-width="1"/>`;
+    html += `<text x="${padX-4}" y="${y(v)+3}" text-anchor="end" font-size="8" fill="#a08a92">${v}</text>`;
+  });
+  // 上周虚线
+  if (pp.some(p => p)) {
+    html += `<path d="${path(pp)}" fill="none" stroke="#c9b6bd" stroke-width="2" stroke-dasharray="5 4"/>`;
+    pp.forEach((p, i) => { if (p) html += `<circle cx="${p[0]}" cy="${p[1]}" r="2.5" fill="#c9b6bd"/>`; });
+  }
+  // 本周实线
+  if (pt.some(p => p)) {
+    html += `<path d="${path(pt)}" fill="none" stroke="#b4546b" stroke-width="2.5" stroke-linecap="round"/>`;
+    pt.forEach((p, i) => {
+      if (!p) return;
+      const last = i === 6;
+      html += `<circle cx="${p[0]}" cy="${p[1]}" r="${last?4:3}" fill="${last?'#b4546b':'#fff'}" stroke="#b4546b" stroke-width="2"/>`;
+    });
+  }
+  // x 轴标签
+  const week = ["日","一","二","三","四","五","六"];
+  last7().forEach((d, i) => {
+    html += `<text x="${x(i)}" y="${H-4}" text-anchor="middle" font-size="9" fill="#a08a92">${week[new Date(d).getDay()]}</text>`;
+  });
+  svg.innerHTML = html;
+}
+
+function renderTodayInsight() {
+  const t = data.days[dateStr(0)];
+  const box = document.getElementById("todayInsight");
+  if (!t) {
+    box.innerHTML = `<div class="insight"><b>📝 今天还没有记录</b>
+      <p>去「生活记录」里补一笔，我就能帮你解读身体的变化啦。</p></div>`;
+    return;
+  }
+  let msgs = "";
+  if (t.sleep < 7) msgs += `<div class="insight warn"><b>😴 睡眠有点欠账</b>
+      <p>昨晚睡了 <em>${t.sleep} 小时</em>，低于 7 小时的健康线。白天犯困不是你的错，是身体在提醒你早点放下手机～</p></div>`;
+  else msgs += `<div class="insight good"><b>😴 睡眠达标</b>
+      <p>昨晚睡了 <em>${t.sleep} 小时</em>，睡眠账户余额充足，继续保持！</p></div>`;
+  if (t.exercise >= 30) msgs += `<div class="insight good"><b>🏃 运动打卡成功</b>
+      <p>${t.type || "运动"} ${t.exercise} 分钟，今天的精力值是 <em>${energy(t)} 分</em>，比不动的自己强多了。</p></div>`;
+  else if (t.exercise > 0) msgs += `<div class="insight"><b>🚶 动了，但可以更多</b>
+      <p>${t.type || "运动"} ${t.exercise} 分钟。哪怕下楼走两圈，把 20 分钟凑上，精力值还能再涨一波。</p></div>`;
+  else msgs += `<div class="insight warn"><b>🛋️ 今天零运动</b>
+      <p>久坐一天会让晚上更难入睡。睡前 10 分钟拉伸也算数，试试？</p></div>`;
+
+  const wl = t.water || 0, wg = data.goals.water || 2000;
+  msgs += wl >= wg
+    ? `<div class="insight good"><b>💧 喝水量达标</b><p>今天喝了 <em>${wl} ml</em>，达成 ${wg} ml 的目标，代谢和皮肤都会感谢你～</p></div>`
+    : `<div class="insight warn"><b>💧 水还没喝够</b><p>今天喝了 <em>${wl} ml</em>，距离 ${wg} ml 还差 <em>${wg - wl} ml</em>（约 ${Math.ceil((wg - wl) / 250)} 杯）。上午一杯、下午一杯，很容易补上。</p></div>`;
+
+  const kk = mealTotal(dateStr(0)), kg = data.goals.kcal || 2000, ms = t.meals || [];
+  const topFood = ms.length ? ms.slice().sort((a, b) => b.kcal - a.kcal)[0].name : "";
+  msgs += kk > kg
+    ? `<div class="insight warn"><b>🍚 今天热量超标</b><p>已摄入 <em>${kk} kcal</em>，超出目标 <em>${kk - kg} kcal</em>${topFood ? "，主要来自「" + topFood + "」" : ""}。明天的三餐稍微清淡一点就能抵消。</p></div>`
+    : `<div class="insight ${kk > 0 ? "good" : ""}"><b>🍚 热量摄入正常</b><p>已记录 <em>${kk} kcal</em>，在 ${kg} kcal 目标内，还可摄入 ${kg - kk} kcal。</p></div>`;
+
+  box.innerHTML = msgs;
+}
+
+/* ================= 记录页 ================= */
+function addRecord() {
+  const bedtime = document.getElementById("fBedtime").value || "23:30";
+  const sleep = parseFloat(document.getElementById("fSleep").value) || 0;
+  const type = document.getElementById("fType").value;
+  const exercise = parseInt(document.getElementById("fExercise").value) || 0;
+  if (sleep <= 0) { alert("睡眠时长要大于 0 哦"); return; }
+  const prev = data.days[dateStr(0)] || {};
+  data.days[dateStr(0)] = {
+    bedtime, sleep, exercise, type, mood: sleep >= 7 ? 3 : 2,
+    water: typeof prev.water === "number" ? prev.water : 0,
+    meals: Array.isArray(prev.meals) ? prev.meals : []
+  };
+  save();
+  renderAll();
+  switchTab(document.querySelector('.tab[data-view="view-home"]'), 'view-home');
+}
+
+function renderLog() {
+  const list = document.getElementById("recordList");
+  const entries = Object.keys(data.days).sort().reverse().slice(0, 10);
+  if (!entries.length) { list.innerHTML = "<p style='font-size:12px;color:var(--muted)'>还没有记录，先记一笔吧～</p>"; return; }
+  list.innerHTML = entries.map(d => {
+    const r = data.days[d];
+    const dt = new Date(d);
+    const label = d === dateStr(0) ? "今天" : d === dateStr(-1) ? "昨天" : (dt.getMonth()+1) + "月" + dt.getDate() + "日";
+    const tag = r.sleep >= 7 && r.exercise >= 20
+      ? `<span class="record-tag good">状态好</span>`
+      : r.sleep < 6.5 || r.exercise === 0
+        ? `<span class="record-tag warn">需关注</span>`
+        : `<span class="record-tag">还行</span>`;
+    return `<div class="record-item">
+      <div class="record-ico ${r.exercise ? 'exercise' : 'sleep'}">${r.exercise ? '🏃' : '🌙'}</div>
+      <div class="record-info"><b>${label}</b>
+        <span>睡 ${r.sleep}h · ${r.bedtime} 入睡${r.exercise ? " · " + (r.type||"运动") + " " + r.exercise + " 分钟" : " · 未运动"}
+        · 💧${r.water || 0}ml${r.meals && r.meals.length ? " · " + mealTotal(d) + " kcal" : ""}</span></div>
+      ${tag}
+    </div>`;
+  }).join("");
+  renderMeals();
+  syncGoals();
+}
+
+function syncGoals() {
+  ["water", "kcal"].forEach(k => {
+    const el = document.getElementById(k === "water" ? "fWaterGoal" : "fKcalGoal");
+    if (el && document.activeElement !== el) el.value = data.goals[k];
+  });
+}
+
+function renderFoodUI() {
+  const dl = document.getElementById("foodList");
+  dl.innerHTML = FOODS.map(f => `<option value="${f.n}" label="${f.k} kcal / 100g"></option>`).join("");
+  const hot = ["米饭", "鸡蛋", "鸡胸肉", "全脂牛奶", "苹果", "香蕉", "面条", "红薯", "西兰花", "三文鱼", "奶茶", "可乐"];
+  document.getElementById("suggestRow").innerHTML =
+    hot.map(n => `<button class="chip" onclick="pickFood('${n}')">${n}</button>`).join("");
+}
+function pickFood(n) {
+  document.getElementById("fFood").value = n;
+  estimateFood();
+}
+
+function renderMeals() {
+  const r = data.days[dateStr(0)];
+  const meals = (r && r.meals) || [];
+  const box = document.getElementById("mealList");
+  if (!meals.length) {
+    box.innerHTML = `<p style="font-size:12px;color:var(--muted);margin:0 2px 6px">今天还没有饮食记录，在上面评估一下卡路里吧～</p>`;
+    return;
+  }
+  box.innerHTML = meals.map((m, i) => `
+    <div class="meal-item">
+      <div class="record-ico exercise">🍽️</div>
+      <div class="meal-info"><b>${m.name} · ${m.grams}g</b>
+        <span>${m.kcal} kcal${m.time ? " · " + m.time : ""}</span></div>
+      <button class="del-btn" onclick="delMeal(${i})">×</button>
+    </div>`).join("");
+}
+
+/* ================= 数据解释页 ================= */
+function renderInsights() {
+  const cur = getStats(last7()), prev = getStats(prev7());
+  const list = document.getElementById("insightList");
+  const cmp = document.getElementById("compareBox");
+  const f = (v, d=1) => v.toFixed(d);
+  const sleepDiff = cur.sleep - prev.sleep;
+  const exDiff = cur.exercise - prev.exercise;
+
+  let sleepMsg;
+  if (cur.sleep < 6.5) sleepMsg = `近 7 天平均睡眠只有 <em>${f(cur.sleep)} 小时</em>，明显低于 7–8 小时的推荐区间。你在 ${cur.lateNights} 个晚上 23:30 以后才入睡——长期这样，白天的疲惫感就是睡眠债在"收利息"。`;
+  else if (cur.sleep < 7) sleepMsg = `近 7 天平均睡眠 <em>${f(cur.sleep)} 小时</em>，离 7 小时的健康线只差一点点。其中 ${cur.lateNights} 个晚上睡得偏晚，把入睡时间提前半小时，白天精神会明显不一样。`;
+  else sleepMsg = `近 7 天平均睡眠 <em>${f(cur.sleep)} 小时</em>，稳定在健康区间，睡眠质量这一项可以放心。`;
+
+  let exMsg;
+  if (cur.activeDays === 0) exMsg = `本周还没有达到 20 分钟以上的运动日。不需要一上来就猛练——每天散步 20 分钟就是一个足够好的开始。`;
+  else if (cur.activeDays <= 2) exMsg = `本周有 <em>${cur.activeDays} 天</em>完成 20 分钟以上运动，平均每天 ${f(cur.exercise)} 分钟。频率还偏低，研究建议每周至少 3 次中等强度活动，中间间隔别超过两天。`;
+  else exMsg = `本周有 <em>${cur.activeDays} 天</em>动了起来，平均每天 ${f(cur.exercise)} 分钟，节奏保持得不错。注意运动和睡眠是互相成就的：白天动得多，晚上睡得香。`;
+
+  const energyNow = avg(last7().map(d => energy(data.days[d])).filter(v => v != null));
+  const energyPrev = avg(prev7().map(d => energy(data.days[d])).filter(v => v != null));
+  const eDiff = energyNow - energyPrev;
+
+  // 喝水解读
+  const wArr = last7().map(d => (data.days[d] || {}).water || 0);
+  const wAvg = avg(wArr), wGoal = data.goals.water || 2000;
+  const lowDays = wArr.filter(v => v < wGoal * 0.6).length;
+  const wMsg = lowDays >= 4
+    ? `近 7 天平均喝水 <em>${f(wAvg, 0)} ml</em>，只有 ${7 - lowDays} 天达到目标的 60%。喝水不足最容易被误当成"累"——先补水，再看精神状态。`
+    : lowDays >= 1
+      ? `近 7 天平均喝水 <em>${f(wAvg, 0)} ml</em>（目标 ${wGoal} ml），有 ${lowDays} 天喝得偏少。把水杯放在手边，是最简单有效的办法。`
+      : `近 7 天平均喝水 <em>${f(wAvg, 0)} ml</em>，每天都稳稳达标，水分管理这一项做得很好 💧`;
+
+  // 热量解读
+  const kArr = last7().map(d => mealTotal(d));
+  const kAvg = avgKcal(last7()), kGoal = data.goals.kcal || 2000;
+  const overDays = kArr.filter(v => v > 0 && v > kGoal).length;
+  const freq = {};
+  last7().forEach(d => ((data.days[d] || {}).meals || []).forEach(m => {
+    freq[m.name] = (freq[m.name] || 0) + m.kcal;
+  }));
+  const topEntry = Object.entries(freq).sort((a, b) => b[1] - a[1])[0];
+  const kMsg = !topEntry
+    ? `近 7 天还没有饮食记录。想了解热量摄入的话，去「生活记录」里记几笔，我来帮你算。`
+    : overDays >= 3
+      ? `近 7 天平均摄入 <em>${f(kAvg, 0)} kcal</em>，有 ${overDays} 天超过 ${kGoal} kcal 目标。热量来源第一名是「${topEntry[0]}」（本周累计 ${topEntry[1]} kcal）——可以先从这一项下手调整。`
+      : `近 7 天平均摄入 <em>${f(kAvg, 0)} kcal</em>，整体控制在 ${kGoal} kcal 目标附近，有 ${overDays} 天略微超标，节奏是稳的。`;
+
+  list.innerHTML = `
+    <div class="insight ${sleepDiff >= 0 ? '' : 'warn'}"><b>🌙 睡眠解读</b><p>${sleepMsg}</p></div>
+    <div class="insight ${cur.activeDays >= 3 ? 'good' : 'warn'}"><b>🏃 运动解读</b><p>${exMsg}</p></div>
+    <div class="insight ${lowDays <= 1 ? 'good' : 'warn'}"><b>💧 喝水解读</b><p>${wMsg}</p></div>
+    <div class="insight ${overDays >= 3 ? 'warn' : ''}"><b>🍚 热量解读</b><p>${kMsg}</p></div>
+    <div class="insight ${eDiff >= 0 ? 'good' : 'warn'}"><b>📈 变化解读</b><p>
+      你的精力指数本周平均 <em>${f(energyNow, 0)} 分</em>，比上周${eDiff >= 0 ? "上升" : "下降"}了
+      <em>${f(Math.abs(eDiff), 0)} 分</em>。${eDiff >= 0
+        ? "方向是对的，说明最近的生活方式正在给身体「充电」。"
+        : "下滑主要来自睡眠和运动的变化——好消息是这两项都是你自己能控制的。"}</p></div>`;
+
+  cmp.innerHTML = `
+    平均睡眠：<b style="color:var(--rose)">${f(cur.sleep)} h</b>（上周 ${f(prev.sleep)} h，${sleepDiff>=0?"+":""}${f(sleepDiff)}）<br>
+    平均运动：<b style="color:var(--rose)">${f(cur.exercise, 0)} 分钟</b>（上周 ${f(prev.exercise, 0)} 分钟，${exDiff>=0?"+":""}${f(exDiff, 0)}）<br>
+    运动达标天：<b style="color:var(--rose)">${cur.activeDays} 天</b>（上周 ${prev.activeDays} 天）<br>
+    23:30 后入睡：<b style="color:var(--rose)">${cur.lateNights} 晚</b>（上周 ${prev.lateNights} 晚）<br>
+    平均喝水：<b style="color:var(--rose)">${f(wAvg, 0)} ml</b>（目标 ${wGoal} ml，未达标 ${lowDays} 天）<br>
+    平均摄入：<b style="color:var(--rose)">${f(kAvg, 0)} kcal</b>（目标 ${kGoal} kcal，超标 ${overDays} 天）`;
+}
+
+/* ================= 行动反馈（对话） ================= */
+const quickMsgs = [
+  "这几天总是睡得晚，白天又没精神，结合我的记录，帮我安排一个这周能做到的小改变",
+  "我想开始运动，但总坚持不下来怎么办",
+  "帮我看看这周的数据有什么问题",
+  "今天水喝得够吗",
+  "帮我算算今天吃了多少卡路里"
+];
+function renderQuick() {
+  document.getElementById("quickRow").innerHTML =
+    quickMsgs.map(m => `<button class="chip" onclick="quickSend(this.textContent)">${m}</button>`).join("");
+}
+function quickSend(t) { sendMsg(t); }
+
+function aiReply(text) {
+  const cur = getStats(last7());
+  const t = data.days[dateStr(0)];
+  let reply;
+
+  if (text.includes("睡得晚") || text.includes("没精神") || text.includes("睡眠")) {
+    reply = `看了你最近 7 天的记录：平均睡眠 ${cur.sleep.toFixed(1)} 小时，有 ${cur.lateNights} 晚在 23:30 之后才睡。白天没精神，主要就是睡眠债。<br><br>不用一步到位，这周先做这一个能坚持的小改变：<br>`;
+    reply += `<div class="plan-item"><span class="day">周一~周五</span><span>比昨天提前 15 分钟上床，手机放客厅充电，睡前用 10 分钟拉伸代替刷屏。</span></div>`;
+    reply += `<div class="plan-item"><span class="day">周六</span><span>中午可以补一个 20 分钟小睡（别超过 30 分钟，否则晚上更睡不着）。</span></div>`;
+    reply += `<div class="plan-item"><span class="day">周日</span><span>回来告诉我这周做到了几天，我们一起调下周的目标。</span></div>`;
+  } else if (text.includes("喝水") || text.includes("饮水") || text.includes("补水") || text.includes("水量")) {
+    const wl = (t && t.water) || 0, wg = data.goals.water || 2000;
+    const wArr = last7().map(d => (data.days[d] || {}).water || 0);
+    const wAvg = avg(wArr), left = Math.max(0, wg - wl);
+    reply = `你今天喝了 <b>${wl} ml</b>，近 7 天平均 ${wAvg.toFixed(0)} ml（目标 ${wg} ml）。<br><br>`;
+    if (left > 0) {
+      reply += `还差 <b>${left} ml</b>（约 ${Math.ceil(left / 250)} 杯）。今天剩下的水可以这样分：<br>`;
+      reply += `<div class="plan-item"><span class="day">现在</span><span>先喝 250 ml——别等口渴，口渴时身体其实已经缺水 1–2% 了。</span></div>`;
+      reply += `<div class="plan-item"><span class="day">午餐前</span><span>再来 250 ml，还能顺带少吃两口主食。</span></div>`;
+      reply += `<div class="plan-item"><span class="day">下午</span><span>分 2 次喝完剩下的量，睡前 1 小时少喝，避免起夜影响睡眠。</span></div>`;
+    } else {
+      reply += `今天已经达标啦 💧 保持这个节奏就好；运动日记得再多补 300–500 ml。`;
+    }
+  } else if (text.includes("卡路里") || text.includes("热量") || text.includes("饮食") || text.includes("吃") || text.includes("减脂") || text.includes("胖") || text.includes("体重")) {
+    const kk = mealTotal(dateStr(0)), kg = data.goals.kcal || 2000;
+    const kAvg = avgKcal(last7());
+    const ms = (t && t.meals) || [];
+    const topFood = ms.length ? ms.slice().sort((a, b) => b.kcal - a.kcal)[0] : null;
+    reply = `你今天已记录 <b>${kk} kcal</b>，近 7 天平均 ${kAvg} kcal（目标 ${kg} kcal）。`;
+    if (topFood) reply += `其中热量最高的是「${topFood.name} ${topFood.grams}g」，约 ${topFood.kcal} kcal。`;
+    reply += `<br><br>${kk > kg ? "今天已经超标了，接下来这样收一收" : "还在目标范围内，接下来可以这样安排"}<br>`;
+    reply += `<div class="plan-item"><span class="day">下一餐</span><span>${kk > kg ? "以蔬菜 + 优质蛋白为主，主食减半，少油少酱汁。" : "正常吃，优先安排蛋白质（鸡胸肉 / 鱼 / 豆腐）和绿叶菜。"}</span></div>`;
+    reply += `<div class="plan-item"><span class="day">搭配</span><span>每餐先喝一杯水、先吃菜再吃主食，饱腹感更强、总热量更低。</span></div>`;
+    reply += `<div class="plan-item"><span class="day">记录</span><span>吃之前顺手记一笔，我会一直帮你盯着今天的额度。</span></div>`;
+  } else if (text.includes("运动") || text.includes("坚持")) {
+    reply = `你本周有 ${cur.activeDays} 天动了 20 分钟以上，平均 ${cur.exercise.toFixed(0)} 分钟/天。坚持不下来通常不是懒，是目标定太大。<br><br>试试"最小可行运动"策略：<br>`;
+    reply += `<div class="plan-item"><span class="day">第 1 步</span><span>把目标降到不可能失败的程度：每天换上运动鞋出门走 10 分钟就算赢。</span></div>`;
+    reply += `<div class="plan-item"><span class="day">第 2 步</span><span>固定在饭后 30 分钟，绑定一个已有习惯（比如遛弯顺便听播客）。</span></div>`;
+    reply += `<div class="plan-item"><span class="day">第 3 步</span><span>连续做到 3 天，回来找我领下一个 15 分钟版本的目标。</span></div>`;
+  } else if (text.includes("数据") || text.includes("问题")) {
+    const e = avg(last7().map(d => energy(data.days[d])).filter(v => v != null));
+    const prev = getStats(prev7());
+    reply = `帮你把近两周数据对了个账：<br><br>· 睡眠：本周 ${cur.sleep.toFixed(1)}h vs 上周 ${prev.sleep.toFixed(1)}h（${cur.sleep>=prev.sleep?"↑":"↓"}）<br>· 运动：本周 ${cur.exercise.toFixed(0)} 分钟/天 vs 上周 ${prev.exercise.toFixed(0)} 分钟/天<br>· 精力指数：${e.toFixed(0)} 分<br><br>最值得先解决的一件事：<b>${cur.sleep < 7 ? "把入睡时间提前到 23:00 前" : "把运动频率提到每周 3 次以上"}</b>，其他的会跟着好起来。`;
+  } else {
+    reply = `收到！我的判断依据是你最近的记录：平均睡眠 ${cur.sleep.toFixed(1)} 小时、运动 ${cur.exercise.toFixed(0)} 分钟/天、精力指数 ${avg(last7().map(d=>energy(data.days[d])).filter(v=>v!=null)).toFixed(0)} 分。<br><br>你可以告诉我更具体的困扰，或者点下面的快捷问题，我来把数据翻译成这周能做到的小改变。`;
+  }
+  return reply;
+}
+
+function sendMsg(forced) {
+  const input = document.getElementById("chatInput");
+  const text = forced || input.value.trim();
+  if (!text) return;
+  input.value = "";
+  const area = document.getElementById("chatArea");
+  area.insertAdjacentHTML("beforeend",
+    `<div class="msg user"><div class="who">🙂</div><div class="bubble">${text}</div></div>`);
+  area.insertAdjacentHTML("beforeend",
+    `<div class="msg ai" id="typing"><div class="who">🤖</div><div class="bubble typing"><span></span><span></span><span></span></div></div>`);
+  area.scrollIntoView(false);
+  const scroll = document.getElementById("scroll");
+  scroll.scrollTop = scroll.scrollHeight;
+  setTimeout(() => {
+    const tp = document.getElementById("typing");
+    if (tp) tp.remove();
+    area.insertAdjacentHTML("beforeend",
+      `<div class="msg ai"><div class="who">🤖</div><div class="bubble">${aiReply(text)}</div></div>`);
+    scroll.scrollTop = scroll.scrollHeight;
+  }, 700);
+}
+
+/* ================= 切换 ================= */
+function switchTab(el, viewId) {
+  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+  el.classList.add("active");
+  document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+  document.getElementById(viewId).classList.add("active");
+  document.getElementById("scroll").scrollTop = 0;
+  if (viewId === "view-action" && !document.getElementById("chatArea").children.length) {
+    document.getElementById("chatArea").innerHTML =
+      `<div class="msg ai"><div class="who">🤖</div><div class="bubble">你好呀，我是你的健康助手 🌸<br>我会把你的睡眠和运动记录，变成看得懂的变化说明，再陪你定一个这周能做到的小改变。随时开聊～</div></div>`;
+  }
+}
+
+function renderAll() {
+  renderFoodUI();
+  renderHome(); renderLog(); renderInsights(); renderQuick();
+}
+renderAll();
+</script>
+</body>
+</html>
