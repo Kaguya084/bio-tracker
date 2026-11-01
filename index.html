@@ -2280,17 +2280,16 @@ const PROMPT_REVISE = `你是面向大学生的日常生活方式助手。
 async function callAI(systemPrompt, userPayload) {
   const apiKey = DB.settings.apiKey;
   if (!apiKey) throw new Error("未填写 API Key");
-  // 1. 把 URL 换成大工网关的地址
-  const resp = await fetch("https://aigw.dlut.edu.cn/v1/chat/completions", {
+  // 找到这一行，改回官方地址
+  const resp = await fetch("https://api.deepseek.com/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": "Bearer " + apiKey },
     body: JSON.stringify({
-      // 2. 把 model 换成你在模型广场复制的那个名字
-      model: "DeepSeek-V4-Flash-0731-W8A8", 
+      model: "deepseek-chat", // 改回官方的 deepseek-chat
       messages: [ { role: "system", content: systemPrompt }, { role: "user", content: userPayload } ],
       temperature: 0.3
     })
-  });
+});
   if (!resp.ok) {
     const errText = await resp.text();
     throw new Error(`HTTP ${resp.status} - ${errText.slice(0, 50)}`);
