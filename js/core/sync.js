@@ -25,18 +25,41 @@ const Sync = (() => {
   /* 可同步的桶；journal 明确排除 */
   const SYNC_BUCKETS = ['water', 'sleep', 'diet', 'ex', 'steps', 'foods', 'sportProfile', 'sportPlans', 'sportFeedbacks'];
 
+  /* 稳定序列化：键序固定，避免对象键顺序抖动被误判为"内容变化" */
+  function stableStr(v) {
+    if (v === null || typeof v !== 'object') return JSON.stringify(v);
+    if (Array.isArray(v)) return '[' + v.map(stableStr).join(',') + ']';
+    return '{' + Object.keys(v).sort().map(k => JSON.stringify(k) + ':' + stableStr(v[k])).join(',') + '}';
+  }
+
+  /* 逐条记录维护修改时间：
+     - 用内容签名与上次上传的签名比对，内容变了才刷新时间戳
+     - 未变化的记录沿用旧 ts，避免每次 push 把全部记录刷成最新
+       （否则一台设备上传会覆盖另一台刚改的数据，退化成"最后上传者赢"）
+     - applyChanges 从云端应用数据后也更新签名，避免把刚下载的数据再当本地改动上传 */
   function collectChanges() {
     const out = [];
-    const stamp = Date.now();
+    const now = Date.now();
     SYNC_BUCKETS.forEach(bucket => {
       const val = DB[bucket];
       if (val == null) return;
+      const emit = (key, payload) => {
+        const tkey = 'bio_ts_' + bucket + '_' + key;
+        const skey = 'bio_sig_' + bucket + '_' + key;
+        const sig = stableStr(payload);
+        const prevSig = localStorage.getItem(skey);
+        let ts = +(localStorage.getItem(tkey) || 0);
+        if (!ts || prevSig !== sig) {
+          ts = now;                       // 新记录或内容确有变化 → 刷新时间
+          localStorage.setItem(tkey, String(ts));
+          localStorage.setItem(skey, sig);
+        }
+        out.push({ bucket, rec_key: key, payload, updated_at: ts, deleted: false });
+      };
       if (typeof val === 'object' && !Array.isArray(val)) {
-        Object.keys(val).forEach(k => {
-          out.push({ bucket, rec_key: k, payload: val[k], updated_at: stamp, deleted: false });
-        });
+        Object.keys(val).forEach(k => emit(k, val[k]));
       } else {
-        out.push({ bucket, rec_key: '_all', payload: val, updated_at: stamp, deleted: false });
+        emit('_all', val);
       }
     });
     return out;
@@ -56,6 +79,7 @@ const Sync = (() => {
         DB[r.bucket] = r.payload;
       }
       localStorage.setItem('bio_ts_' + r.bucket + '_' + r.rec_key, String(r.updated_at));
+      localStorage.setItem('bio_sig_' + r.bucket + '_' + r.rec_key, stableStr(r.payload));
       touched = true;
     });
     if (touched) { save(); Bus.emit('sync:applied', rows); }
@@ -91,14 +115,17 @@ const Sync = (() => {
     async push() {
       if (!isOn()) return { skipped: true };
       const rows = await call('push', { changes: collectChanges() });
-      localStorage.setItem(LS_LAST, String(Date.now()));
+      // 修复：不再写 LS_LAST。原逻辑上传后把游标推到"现在"，导致本机下次
+      // 下载时 since=now，把其他设备在此之前上传的数据全部过滤掉（iOS 下载失败的根因）。
       return { applied: rows };
     },
     async pull() {
       if (!isOn()) return { skipped: true, rows: [] };
-      const rows = await call('pull', { since: +(localStorage.getItem(LS_LAST) || 0) });
+      // 全量拉取：since=0 时服务端不加 updated_at 过滤。
+      // 是否应用由 applyChanges 逐条按 bio_ts 做 LWW 判断，避免依赖设备间不可靠的时间游标。
+      const rows = await call('pull', { since: 0 });
       applyChanges(rows);
-      localStorage.setItem(LS_LAST, String(Date.now()));
+      localStorage.setItem(LS_LAST, String(Date.now())); // 仅用于状态显示，不再作为过滤条件
       return { applied: rows.length };
     },
     /* 供设置页显示状态 */
