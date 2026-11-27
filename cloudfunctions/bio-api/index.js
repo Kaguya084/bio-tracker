@@ -5,7 +5,8 @@
    数据访问：https://{envId}.api.tcloudbasegateway.com/v1/rdb/rest/{table}
    鉴权：Authorization: Bearer <CLOUDBASE_API_KEY>（service_role，绕过 RLS）
    —— SHARED PG 无 NoSQL 后端；node-sdk 的 rdb() 运行时未实现，故用官方 REST 契约。
-   CORS：由 HTTP 网关按安全域名注入，函数本身不设置 Allow-Origin。
+   CORS：动态反射请求 Origin（含 file:// 的 "null"），因为网关实测不注入该头，
+   且不反射 "*"（避免与网关注入叠加成 "<origin>,*" 被浏览器拒绝）。
    ================================================================= */
 const https = require('https');
 const http = require('http');
@@ -15,8 +16,23 @@ const ENV_ID = process.env.TCB_ENV_ID || 'project-labyrinth-d4dsyd0c9116e7';
 const API_KEY = process.env.CLOUDBASE_API_KEY || '';
 const PG_HOST = ENV_ID + '.api.tcloudbasegateway.com';
 
-function sendJson(res, code, body) {
-  res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' });
+/* 单个 Origin 反射：file:// 发来的 Origin 是字符串 "null"，同样合法放行 */
+function corsHeaders(req) {
+  const origin = req.headers && req.headers.origin;
+  if (!origin) return {};
+  return {
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Vary': 'Origin'
+  };
+}
+
+function sendJson(res, code, body, req) {
+  res.writeHead(code, Object.assign(
+    { 'Content-Type': 'application/json; charset=utf-8' },
+    req ? corsHeaders(req) : {}
+  ));
   res.end(JSON.stringify(body));
 }
 function readJsonBody(req) {
@@ -163,25 +179,30 @@ async function syncCreate(body) {
 
 /* ---------- HTTP server（监听 9000） ---------- */
 const server = http.createServer(async (req, res) => {
-  if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
+  // CORS 预检：必须带 Allow-Origin，否则 file:// 与跨域公网的 fetch 直接失败
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, corsHeaders(req));
+    return res.end();
+  }
   const pathname = new URL(req.url || '/', 'http://127.0.0.1').pathname;
   try {
-    if (req.method !== 'POST') return sendJson(res, 405, { ok: false, error: 'method not allowed' });
+    if (req.method !== 'POST') return sendJson(res, 405, { ok: false, error: 'method not allowed' }, req);
     const body = await readJsonBody(req);
     if (pathname.endsWith('/ai')) {
       if (!body.system || !body.payload) throw new Error('ai 参数不完整');
-      return sendJson(res, 200, { ok: true, text: await callDeepSeek(body.system, body.payload) });
+      return sendJson(res, 200, { ok: true, text: await callDeepSeek(body.system, body.payload) }, req);
     }
     if (pathname.endsWith('/sync')) {
-      if (body.op === 'create') return sendJson(res, 200, { ok: true, data: await syncCreate(body) });
-      if (body.op === 'push')  return sendJson(res, 200, { ok: true, data: await syncPush(body) });
-      if (body.op === 'pull')  return sendJson(res, 200, { ok: true, data: await syncPull(body) });
+      if (body.op === 'create') return sendJson(res, 200, { ok: true, data: await syncCreate(body) }, req);
+      if (body.op === 'push')  return sendJson(res, 200, { ok: true, data: await syncPush(body) }, req);
+      if (body.op === 'pull')  return sendJson(res, 200, { ok: true, data: await syncPull(body) }, req);
       throw new Error('未知 sync op');
     }
-    if (pathname === '/' || pathname === '/health') return sendJson(res, 200, { ok: true, service: 'bio-api' });
-    return sendJson(res, 404, { ok: false, error: 'not found' });
+    if (pathname.endsWith('/health') || pathname.endsWith('/api'))
+      return sendJson(res, 200, { ok: true, service: 'bio-api' }, req);
+    return sendJson(res, 404, { ok: false, error: 'not found' }, req);
   } catch (e) {
-    return sendJson(res, 500, { ok: false, error: e.message || String(e) });
+    return sendJson(res, 500, { ok: false, error: e.message || String(e) }, req);
   }
 });
 
