@@ -1247,13 +1247,14 @@
 </div>
 
 <!-- 核心层：工具 → 事件总线 → 数据层（顺序不可颠倒，均使用全局 const） -->
-<script src="./js/ai/pyverify.js"></script>
-<script src="./js/core/util.js"></script>
-<script src="./js/core/bus.js"></script>
-<script src="./js/core/store.js"></script>
-<script src="./js/core/sync.js"></script>
-<script src="./js/ai/guard.js"></script>
-<script src="./js/schedule/bridge.js"></script>
+<!-- 版本号强制刷新缓存：改动 JS 时递增 v=N，避免浏览器加载旧脚本导致验证异常 -->
+<script src="./js/ai/pyverify.js?v=2"></script>
+<script src="./js/core/util.js?v=2"></script>
+<script src="./js/core/bus.js?v=2"></script>
+<script src="./js/core/store.js?v=2"></script>
+<script src="./js/core/sync.js?v=2"></script>
+<script src="./js/ai/guard.js?v=2"></script>
+<script src="./js/schedule/bridge.js?v=2"></script>
 <script>
 /* 云端地址：CloudBase HTTP 网关路由 /api（bio-api 函数）
    同步已可直接用；AI 需服务端配置 DEEPSEEK_API_KEY 后才生效，否则自动降级离线模板。 */
@@ -3917,6 +3918,6 @@ try:
 except Exception as _e:
     print('[py] bootstrap failed:', _e)
 </script>
-<script src="./js/ai/pybridge.js"></script>
+<script src="./js/ai/pybridge.js?v=2"></script>
 </body>
 </html>

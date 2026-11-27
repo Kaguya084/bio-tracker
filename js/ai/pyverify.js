@@ -52,12 +52,18 @@ function verifyParity() {
     return { name: f.name, ok: diffs.length === 0, js: js, py: py, diffs: diffs };
   });
   const passed = rows.filter(r => r.ok).length;
-  return { ok: passed === rows.length, passed: passed, total: rows.length, rows: rows };
+  // 缓存自检：JS 对所有 fixture 给出相同结果 = 加载了旧版 guard.js（忽略第三参数、读了真实 DB.ex）
+  const jsMinutes = rows.map(r => r.js.minutes);
+  const cached = rows.length > 1 && jsMinutes.every(v => v === jsMinutes[0]);
+  return { ok: passed === rows.length, passed: passed, total: rows.length, rows: rows, cached: cached };
 }
 
 function showParity() {
   const r = verifyParity();
   if (!r.total) { alert(r.reason || '验证失败'); return; }
+  const warn = r.cached
+    ? '⚠️ 检测到浏览器缓存了旧版 guard.js（JS 对所有样例给出相同结果）。\n请在页面上按 Ctrl+F5 强制刷新，或清除浏览器缓存后重试。\n\n'
+    : '';
   const lines = r.rows.map(x =>
     (x.ok ? '✅ ' : '❌ ') + x.name +
     ' ｜ JS ' + x.js.minutes + '分/' + x.js.valid + '天 ｜ Python ' +
@@ -70,6 +76,8 @@ function showParity() {
     '<style>body{font-family:system-ui,sans-serif;background:#faf8fa;color:#2c2c34;padding:24px}' +
     'h3{color:#b5485a}pre{white-space:pre-wrap;line-height:1.9;font-size:13px}</style></head><body>' +
     '<h3>计算思维 · 双实现一致性验证</h3>' +
+    (warn ? '<p style="background:#fff4e0;border-left:4px solid #c98a2e;padding:10px 14px;white-space:pre-wrap">' +
+      warn.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</p>' : '') +
     '<p>一致率：<b>' + r.passed + '/' + r.total + '</b>（同一规格的 JS 与 Python 实现对照）</p>' +
     '<pre>' + lines.map(s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;')).join('\n') + '</pre>' +
     '</body></html>');
