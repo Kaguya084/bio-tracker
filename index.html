@@ -3211,14 +3211,25 @@ function exportData(){
 function importData(inp){
   const f=inp.files[0];if(!f)return;
   const rd=new FileReader();
-  rd.onload=e=>{try{const o=JSON.parse(e.target.result);
+  rd.onload=e=>{try{let o=JSON.parse(e.target.result);
+    /* Python 校验 + 迁移优先：损坏文件拒绝、旧版格式自动升级、密钥清理 */
+    const V=pyCall('validate_backup',{obj:o});
+    if(V.ok){
+      if(V.data.errors && V.data.errors.length){
+        alert('导入失败（数据格式错误）：\n'+V.data.errors.join('\n'));return;
+      }
+      const M=pyCall('migrate_backup',{obj:o});
+      if(M.ok) o=M.data;  // Python 迁移成功则用其结果
+    }
+    // Python 未就绪时走原 JS 兜底：仍做 sleep 数组迁移与密钥清理
+    if(o.settings && o.settings.apiKey) delete o.settings.apiKey;
     if(o.water)DB.water=o.water;if(o.sleep)DB.sleep=o.sleep;if(o.settings)Object.assign(DB.settings,o.settings);
     if(o.diet)DB.diet=o.diet;if(o.foods)DB.foods=o.foods;if(o.ex)DB.ex=o.ex;
     if(o.sportProfile)DB.sportProfile=o.sportProfile;
     if(o.sportPlans)DB.sportPlans=o.sportPlans;
     if(o.sportFeedbacks)DB.sportFeedbacks=o.sportFeedbacks;
-    if(o.steps)DB.steps=o.steps;                 // 修复：步数此前被导出却未被恢复
-    if(o.journal)DB.journal=o.journal;           // 修复：心情日记此前被导出却未被恢复
+    if(o.steps)DB.steps=o.steps;                 // 步数
+    if(o.journal)DB.journal=o.journal;           // 心情日记
     if(!DB.diet[TODAY])DB.diet[TODAY]=[];if(!DB.ex[TODAY])DB.ex[TODAY]=[];
     if(!DB.steps[TODAY])DB.steps[TODAY]={goal:8000,logs:[],synced:0};
     if(!DB.journal[TODAY])DB.journal[TODAY]={mood:0,note:'',events:[],review:null};
