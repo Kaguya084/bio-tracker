@@ -47,14 +47,15 @@ bio-tracker/
 2. **AI 洞察**：「运动」页生成解释；基于统计算法给出带数据边界的分析。
 3. **行为闭环**：生成本周行动建议 → 提交执行反馈 → 自动降级调整。
 4. **日程落地**：复制日程 JSON → 「日程」Tab（外部站点）→ 粘贴到「解析并预览」→ 导出 `.ics` → 导入 iPhone 日历。
-5. **可选同步**：「设置 → 跨设备同步」填同一配对码，两端分别点上传/拉取。
+5. **可选同步**：「设置 → 账号与同步」用邮箱注册/登录，两端登录同一账号后分别点上传/拉取。
 
 ## 跨设备同步说明
 
-- 配对码为 6 位字符串（排除易混淆字符），无账号、无注册。安全性较弱，适合个人场景。
-- 云端存 `health_sync` 表，按 `(配对码, 桶, 记录键)` 唯一定位；删除用 tombstone 标记。
+- 采用 **CloudBase 官方 Auth**：邮箱验证码注册 → 登录；密码由平台管理，不存本地。
+- 数据按 `owner_uid`（用户 ID）隔离，云端存 `health_sync` 表，按 `(uid, 桶, 记录键)` 唯一定位；删除用 tombstone 标记。
 - 同步桶：water / sleep / diet / ex / steps / foods / sportProfile / sportPlans / sportFeedbacks。**journal（心情日记）不在同步列表**。
-- 关闭同步后即回到纯本地，云端数据不影响本机。
+- 未登录时纯本地，云端数据不影响本机；换账号会自动清空本地数据再拉取，避免串号。
+- 旧的配对码方案已移除（`sync_code` 列因 schema 遗留暂留空串占位）。
 
 ## 数据与安全
 
@@ -68,17 +69,19 @@ bio-tracker/
 ✅ **已接通并实测**（环境 `project-labyrinth-d4dsyd0c9116e7`，PG 模式）：
 
 - `publishableKey` 与服务端 `api_key` 已由平台生成；服务端 key 只存云函数环境变量，不进代码库。
-- PG 表 `health_sync` / `sync_pairs` 已建（migration `20261127112852`）。
+- PG 表 `health_sync` 已加 `owner_uid` 列与索引（migration `20261127142021`）；`sync_pairs` 弃用。
 - HTTP 云函数 `bio-api` 已部署为 `Active`，经网关路由 `/api` 对外提供：
   `https://project-labyrinth-d4dsyd0c9116e7-1539331770.ap-shanghai.app.tcloudbase.com/api`
-- 端到端实测通过：配对码创建、push/pull 往返、LWW 冲突解决（旧时间戳被拒绝）。
-- 云函数走官方 PG REST API（`Authorization: Bearer <服务端 key>`），不依赖 node-sdk 的 NoSQL/rdb 兼容层。
-- CORS：云函数动态反射请求 Origin（含 `file://` 的 `null`），无需配置安全域名；本地双击打开与 GitHub Pages 公网访问均可直连云端。
+- `/ai` 与 `/sync` 均需登录：前端带 `Authorization: Bearer <token>`，云函数调 `/auth/v1/user/me` 验签取 uid；实测无 token/假 token 均返回 401。
+- 云函数零第三方依赖，走官方 PG REST API（`Authorization: Bearer <服务端 key>`）。
+- CORS：云函数动态反射请求 Origin（含 `file://` 的 `null`），`Allow-Headers` 含 `Authorization`。
 
-⏳ **唯一剩余项**：在线 AI 需在云函数环境变量配置 `DEEPSEEK_API_KEY`（用户自己的密钥）。
-未配置时 `/ai` 会报错并由前端自动降级到离线 Mock —— **不影响任何本地功能与同步功能**。
+⏳ **待配置（需用户操作）**：
+1. **邮箱验证码发件箱**：QQ 邮箱 `3225321507@qq.com` 的 16 位 SMTP 授权码，需在 CloudBase 控制台开启 email provider 并配置 SMTP（`smtp.qq.com` / 465 SSL）。
+2. **在线 AI**：云函数环境变量 `DEEPSEEK_API_KEY`（用户自己的密钥）。
 
-> 以上未完成时，页面**照常可用**（纯本地 + 离线 Mock），只是没有跨设备同步与真实 AI。数据库表 `health_sync` / `sync_pairs` 已建好并通过迁移校验。
+> 未登录时页面**照常可用**（纯本地 + 离线 Mock）。登录与在线 AI 需上述配置完成后才能使用。
+> 另外两项清理需在控制台手动做（MCP 安全策略拦截无回收站的删除）：清空 `health_sync` 旧数据、删除 `sync_pairs` 表。体验版套餐无法添加自定义安全域名，GitHub Pages 下 Auth 请求是否受影响需实测。
 
 ## 已知限制
 
