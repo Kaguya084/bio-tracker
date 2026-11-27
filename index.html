@@ -1167,15 +1167,30 @@
         </div>
         <div class="form-row">
           <div class="field" style="flex: 1 1 100%;">
-            <label>DeepSeek API Key <span class="hint" style="display:inline; margin:0;">(可选，填入后启用真实 AI，不填则使用离线模板)</span></label>
-            <input type="password" id="apiKey" placeholder="sk-..." onchange="saveSettings()">
+            <label>AI 服务 <span class="hint" style="display:inline; margin:0;">(密钥由服务端托管，前端不再保存；未部署云端时自动使用离线模板)</span></label>
+            <input type="text" id="aiMode" value="服务端托管 / 离线降级" readonly style="opacity:.75;">
           </div>
         </div>
         <button class="btn" onclick="saveSettings();renderAll();">保存设置</button>
       </div>
       <div class="card">
+        <h2>☁️ 跨设备同步 <span class="tag">本地优先 · 可选</span></h2>
+        <p class="hint" style="margin:0 0 14px;">默认关闭，数据只存本机。开启后用一个 6 位配对码把 iPhone 与电脑关联；心情日记永不上传。云端未配置时功能自动降级为纯本地，不影响使用。</p>
+        <div class="form-row">
+          <div class="field"><label>配对码</label><input type="text" id="syncCode" placeholder="6 位码" maxlength="6" style="text-transform:uppercase;"></div>
+          <div class="field"><label>状态</label><input type="text" id="syncStatus" readonly style="opacity:.75;"></div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+          <button class="btn ghost" onclick="uiSyncEnable()">🔗 启用同步</button>
+          <button class="btn ghost" onclick="uiSyncDisable()">✂️ 关闭同步</button>
+          <button class="btn ghost" onclick="uiSyncPush()">⬆️ 上传本机</button>
+          <button class="btn ghost" onclick="uiSyncPull()">⬇️ 拉取云端</button>
+        </div>
+        <div class="hint" id="syncMsg" style="margin-top:10px;"></div>
+      </div>
+      <div class="card">
         <h2>🗃 数据管理</h2>
-        <p class="hint" style="margin:0 0 14px;">所有数据保存在本机浏览器中，不会上传。建议定期导出备份。</p>
+        <p class="hint" style="margin:0 0 14px;">所有数据保存在本机浏览器中，不会上传（除非你主动开启上方同步）。建议定期导出备份，备份文件不含任何密钥。</p>
         <div style="display:flex;gap:10px;flex-wrap:wrap;">
           <button class="btn ghost" onclick="exportData()">💾 备份数据 (导出)</button>
           <button class="btn ghost" onclick="document.getElementById('impFile').click()">📂 恢复数据 (导入)</button>
@@ -1210,9 +1225,13 @@
 <script src="./js/core/util.js"></script>
 <script src="./js/core/bus.js"></script>
 <script src="./js/core/store.js"></script>
+<script src="./js/core/sync.js"></script>
 <script src="./js/ai/guard.js"></script>
 <script src="./js/schedule/bridge.js"></script>
 <script>
+/* 云端地址：部署 bio-api 后填入其 HTTP 访问地址；留空则 AI 走离线模板、同步仅本地 */
+window.AI_ENDPOINT = '';
+window.SYNC_ENDPOINT = '';
 /* =================================================================
    0. 全局存储 / 工具函数已抽离至 js/core/{util,bus,store}.js
    DB、K、save、today、TODAY、fmt、esc 由数据层在全局提供
@@ -2688,26 +2707,21 @@ const PROMPT_REVISE = `你是面向大学生的日常生活方式助手。
 \`\`\`
 未完成且原因是「没时间」：缩短时长，或挪到空档；「太累」：降低强度；「场地不方便」：改宿舍或空地。禁止输出“继续努力”等废话。`;
 
-// 统一的 API 请求
+// 统一的 API 请求：密钥只存服务端，前端不再持有（未部署云端时抛错 → 自动降级 Mock）
 async function callAI(systemPrompt, userPayload) {
-  const apiKey = DB.settings.apiKey;
-  if (!apiKey) throw new Error("未填写 API Key");
-  // 找到这一行，改回官方地址
-  const resp = await fetch("https://api.deepseek.com/v1/chat/completions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + apiKey },
-    body: JSON.stringify({
-      model: "deepseek-chat", // 改回官方的 deepseek-chat
-      messages: [ { role: "system", content: systemPrompt }, { role: "user", content: userPayload } ],
-      temperature: 0.3
-    })
-});
+  if (!window.AI_ENDPOINT) throw new Error("云端 AI 代理未配置，使用离线模板");
+  const resp = await fetch(window.AI_ENDPOINT + '/ai', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ system: systemPrompt, payload: userPayload })
+  });
   if (!resp.ok) {
     const errText = await resp.text();
-    throw new Error(`HTTP ${resp.status} - ${errText.slice(0, 50)}`);
+    throw new Error(`HTTP ${resp.status} - ${errText.slice(0, 60)}`);
   }
   const data = await resp.json();
-  return data.choices[0].message.content;
+  if (!data.ok) throw new Error(data.error || 'AI 代理返回失败');
+  return data.text;
 }
 
 // 从 AI 回复中提取 JSON 数组（匹配括号）
@@ -3079,7 +3093,8 @@ function loadSettings(){
   set('height',s.height||170);set('age',s.age||30);set('sex',s.sex||'f');
   set('act',s.act||1.55);set('adj',s.adj!==undefined?s.adj:0);
   set('goalMin',s.goalMin||30);set('goalKcal',s.goalKcal||200);
-  set('apiKey', s.apiKey || ''); // 👈 你之前漏了这一行，加上它！
+  // apiKey 已从前端移除（服务端托管）；清理历史遗留的明文密钥
+  if(s.apiKey){delete s.apiKey;save();}
   applyTheme(s.theme);
 }
 function saveSettings(){
@@ -3095,7 +3110,7 @@ function saveSettings(){
   s.end=val('rmEnd')||'22:00';
   s.goalMin=+val('goalMin')||30;
   s.goalKcal=+val('goalKcal')||200;
-  s.apiKey = val('apiKey').trim(); // 这一行你已经有了，保持不变
+  delete s.apiKey; // 服务端托管，前端不再保存密钥
   if(DB.water[TODAY])DB.water[TODAY].goal=s.goal;
   applyTheme(s.theme);save();renderAll();
 }
@@ -3107,6 +3122,32 @@ function applyTheme(t){
   const c=THEME[t]||THEME.rose,r=document.documentElement.style;
   r.setProperty('--rose',c[0]);r.setProperty('--rose-deep',c[1]);
   r.setProperty('--pink',c[2]);r.setProperty('--pink-2',c[3]);
+}
+
+/* ---------- 云同步 UI ---------- */
+function syncMsg(t){const el=document.getElementById('syncMsg');if(el)el.textContent=t;}
+function renderSyncStatus(){
+  const st=Sync.status();
+  const codeEl=document.getElementById('syncCode'), statusEl=document.getElementById('syncStatus');
+  if(codeEl&&!codeEl.value)codeEl.value=st.code||'';
+  if(statusEl)statusEl.value=st.on?('已启用 · 上次 '+st.last):'未启用（纯本地）';
+}
+async function uiSyncEnable(){
+  const c=(document.getElementById('syncCode').value||'').trim().toUpperCase();
+  if(!/^[A-Z0-9]{4,8}$/.test(c)){syncMsg('请输入 4–8 位配对码（字母或数字）');return;}
+  Sync.enable(c);renderSyncStatus();
+  syncMsg('同步已启用。云端未部署时可正常使用本地功能；部署后即可跨设备同步。');
+}
+function uiSyncDisable(){
+  Sync.disable();renderSyncStatus();syncMsg('已关闭同步，数据回到纯本地模式。');
+}
+async function uiSyncPush(){
+  try{const r=await Sync.push();syncMsg(r.skipped?'未启用同步。':('已上传 '+(r.applied||[]).length+' 条记录。'));}
+  catch(e){syncMsg('上传失败：'+e.message+'（本地数据未受影响）');}
+}
+async function uiSyncPull(){
+  try{const r=await Sync.pull();syncMsg(r.skipped?'未启用同步。':('已合并 '+r.applied+' 条记录。'));renderAll();}
+  catch(e){syncMsg('拉取失败：'+e.message+'（本地数据未受影响）');}
 }
 function exportData(){
   // 安全：API Key 不随备份离开本机（阶段 3 将由服务端托管后彻底移除该字段）
@@ -3315,6 +3356,7 @@ document.getElementById('eDate').value=TODAY;
 initExSelect();
 loadSettings();
 loadProfile();
+renderSyncStatus();
 renderAll();
 genAction();
 askNotify();
