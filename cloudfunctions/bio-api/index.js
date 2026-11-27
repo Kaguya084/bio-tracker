@@ -46,6 +46,66 @@ function readJsonBody(req) {
   });
 }
 
+/* ---------- Auth HTTP API 代理（服务端调用，不受浏览器安全域名限制） ---------- */
+function authApi(method, path, body, token) {
+  return new Promise((resolve, reject) => {
+    const payload = body != null ? JSON.stringify(body) : null;
+    const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    if (payload) headers['Content-Length'] = Buffer.byteLength(payload);
+    const req = https.request({
+      hostname: GATEWAY, path: '/auth/v1/' + path, method, headers, timeout: 15000
+    }, resp => {
+      let raw = '';
+      resp.on('data', c => raw += c);
+      resp.on('end', () => {
+        let data = {};
+        try { data = raw ? JSON.parse(raw) : {}; } catch (e) { data = { raw: raw.slice(0, 300) }; }
+        if (resp.statusCode >= 200 && resp.statusCode < 300) resolve(data);
+        else reject(new Error(data.error_description || data.error || ('Auth HTTP ' + resp.statusCode)));
+      });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => req.destroy(new Error('Auth 请求超时')));
+    if (payload) req.write(payload);
+    req.end();
+  });
+}
+
+async function handleAuth(body) {
+  const op = body.op;
+  if (op === 'send') {
+    // 发验证码：前端注册第一步
+    const d = await authApi('POST', 'verification', { target: 'ANY', email: body.email });
+    return { verification_id: d.verification_id, expires_in: d.expires_in };
+  }
+  if (op === 'verify') {
+    // 验验证码：返回 verification_token 给前端（不在这里注册）
+    const d = await authApi('POST', 'verification/verify', {
+      verification_id: body.verification_id, verification_code: body.code
+    });
+    return { verification_token: d.verification_token };
+  }
+  if (op === 'signup') {
+    const d = await authApi('POST', 'signup', {
+      email: body.email, password: body.password,
+      verification_token: body.verification_token, username: body.username
+    });
+    return { sub: d.sub, access_token: d.access_token, refresh_token: d.refresh_token, expires_in: d.expires_in };
+  }
+  if (op === 'signin') {
+    const d = await authApi('POST', 'signin', { username: body.username, password: body.password });
+    return { sub: d.sub, access_token: d.access_token, refresh_token: d.refresh_token, expires_in: d.expires_in };
+  }
+  if (op === 'refresh') {
+    const d = await authApi('POST', 'token', {
+      grant_type: 'refresh_token', refresh_token: body.refresh_token, client_id: ENV_ID
+    });
+    return { access_token: d.access_token, refresh_token: d.refresh_token, expires_in: d.expires_in };
+  }
+  throw new Error('未知 auth op: ' + op);
+}
+
 /* ---------- 鉴权：token -> uid ---------- */
 function whoAmI(token) {
   return new Promise((resolve, reject) => {
@@ -190,6 +250,12 @@ const server = http.createServer(async (req, res) => {
     if (req.method !== 'POST') return sendJson(res, 405, { ok: false, error: 'method not allowed' }, req);
     if (pathname === '/' || pathname.endsWith('/health') || pathname.endsWith('/api'))
       return sendJson(res, 200, { ok: true, service: 'bio-api', auth: 'required' }, req);
+
+    // /auth 无需登录：发码/验码/注册/登录本身是获取凭证的过程
+    if (pathname.endsWith('/auth')) {
+      const ab = await readJsonBody(req);
+      return sendJson(res, 200, { ok: true, data: await handleAuth(ab) }, req);
+    }
 
     // 统一鉴权：/ai 与 /sync 都必须带有效 token
     const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');

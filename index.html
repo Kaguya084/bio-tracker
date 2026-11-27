@@ -1205,8 +1205,8 @@
           <div class="field"><label>邮箱</label><input type="email" id="authEmail" placeholder="name@example.com" autocomplete="username"></div>
           <div class="field"><label>密码</label><input type="password" id="authPassword" placeholder="至少 6 位" autocomplete="current-password"></div>
         </div>
-        <div class="form-row" id="verifyRow" style="display:none;">
-          <div class="field" style="flex:1 1 100%;"><label>邮箱验证码（注册时填写）</label>
+        <div class="form-row">
+          <div class="field" style="flex:1 1 100%;"><label>邮箱验证码（注册时先点「发验证码」，收到后填这里，再点「验证并登录」）</label>
             <input type="text" id="authCode" placeholder="6 位数字" autocomplete="one-time-code" inputmode="numeric" maxlength="6"></div>
         </div>
         <div class="form-row">
@@ -1255,9 +1255,8 @@
   </div>
 </div>
 
-<!-- CloudBase 官方 Auth SDK（全局变量 cloudbase，公开 accessKey 在 auth.js） -->
-<script src="https://static.cloudbase.net/cloudbase-js-sdk/latest/cloudbase.full.js"></script>
-<!-- 核心层：工具 → 事件总线 → 数据层 → 账号 → 同步（顺序不可颠倒，均使用全局 const） -->
+<!-- 核心层：工具 → 事件总线 → 数据层 → 账号 → 同步（顺序不可颠倒，均使用全局 const）
+     账号走自有云函数 /auth 代理，不引入 CloudBase SDK（体验版无法加安全域名） -->
 <!-- 版本号强制刷新缓存：改动 JS 时递增 v=N，避免浏览器加载旧脚本导致验证异常 -->
 <script src="./js/ai/pyverify.js?v=3"></script>
 <script src="./js/core/util.js?v=3"></script>
@@ -3208,8 +3207,7 @@ async function uiRegister(){
   if(password.length<6){syncMsg('密码至少 6 位');return;}
   try{
     const r=await Auth.register(email,password,null); // 第一步：只发验证码
-    if(r.ok){document.getElementById('verifyRow').style.display='';
-      syncMsg('验证码已发往 '+email+'，请在上方填入后点「验证并登录」。');}
+    if(r.ok){syncMsg('验证码已发往 '+email+'，请在上方验证码框填入后点「验证并登录」。');}
     else syncMsg(r.msg);
   }catch(e){syncMsg('注册失败：'+e.message);}
 }
@@ -3219,8 +3217,7 @@ async function uiVerify(){
   if(!code){syncMsg('请填写邮箱收到的 6 位验证码');return;}
   try{
     const r=await Auth.register(email,password,code);
-    if(r.ok){document.getElementById('verifyRow').style.display='none';renderSyncStatus();
-      syncMsg('注册成功，已登录。可点「拉取云端」同步数据。');}
+    if(r.ok){renderSyncStatus();syncMsg('注册成功，已登录。可点「拉取云端」同步数据。');}
     else syncMsg(r.msg);
   }catch(e){syncMsg('验证失败：'+e.message);}
 }
