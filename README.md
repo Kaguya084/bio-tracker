@@ -77,7 +77,7 @@ bio-tracker/
 - CORS：云函数动态反射请求 Origin（含 `file://` 的 `null`），`Allow-Headers` 含 `Authorization`。
 
 ⏳ **待配置（需用户操作）**：
-1. **邮箱验证码发件箱**：QQ 邮箱 `3225321507@qq.com` 的 16 位 SMTP 授权码，需在 CloudBase 控制台开启 email provider 并配置 SMTP（`smtp.qq.com` / 465 SSL）。
+1. **邮箱验证码发件箱**：QQ 邮箱 `3226321507@qq.com` 的 16 位 SMTP 授权码，需在 CloudBase 控制台开启 email provider 并配置 SMTP（`smtp.qq.com` / 465 SSL）。
 2. **在线 AI**：云函数环境变量 `DEEPSEEK_API_KEY`（用户自己的密钥）。
 
 > 未登录时页面**照常可用**（纯本地 + 离线 Mock）。登录与在线 AI 需上述配置完成后才能使用。
