@@ -78,10 +78,10 @@ def date_range(start, end):
 # =================================================================
 # 分区二：运动统计（镜像 js/ai/guard.js 的 sp* 系列）
 # =================================================================
-def sp_summarize_exercise(ex_by_date, start, end):
-    """输入：ex_by_date = {'2026-11-27': [{t,min,int,kcal,note}, ...]}
+def sp_summarize_exercise(ex, start, end):
+    """输入：ex = {'2026-11-27': [{t,min,int,kcal,note}, ...]}
     输出：与 JS spSummarizeExercise 同结构的 dict（字段逐一对齐）。"""
-    ex_by_date = ex_by_date or {}
+    ex_by_date = ex or {}
     all_days = date_range(start, end)
     per_day = {}
     by_type = {}
@@ -296,30 +296,50 @@ def ex_stat(items):
     return {'min': total_m, 'kcal': total_k}
 
 
-def insight_metrics(db, today):
-    """总览页洞察的纯计算部分：一次跨桥返回全部指标，避免多次调用。"""
+def insight_metrics(db, today, week_days=None):
+    """总览页洞察的全部纯计算：一次跨桥返回，DOM 拼接仍由 JS 负责。"""
     db = db or {}
+    settings = db.get('settings') or {}
     sleep = db.get('sleep') or {}
     water = db.get('water') or {}
     diet = db.get('diet') or {}
     ex = db.get('ex') or {}
+
+    # --- 睡眠：近 7 天均值 + 晚睡/疲惫天数 ---
     skeys = sorted(sleep.keys())[-7:]
-    if skeys:
-        scores = [sleep_score(sleep[k]) for k in skeys]
-        scores = [x for x in scores if x]
-        avg_h = rhalf(sum(x['h'] for x in scores) / len(scores), 1) if scores else None
-        avg_s = math.floor(sum(x['score'] for x in scores) / len(scores) + 0.5) if scores else None
-    else:
-        avg_h = avg_s = None
-    g = kcal_goal(db.get('settings'))
+    scores = [x for x in (sleep_score(sleep[k]) for k in skeys) if x]
+    avg_h = rhalf(sum(x['h'] for x in scores) / len(scores), 1) if scores else None
+    avg_s = math.floor(sum(x['score'] for x in scores) / len(scores) + 0.5) if scores else None
+    late = sum(1 for k in skeys
+               if str(sleep[k].get('bed', '')) >= '23:45' or str(sleep[k].get('bed', '')) < '05:00')
+    tired = sum(1 for k in skeys if (to_float(sleep[k].get('q'), 3) or 3) <= 2)
+
+    # --- 饮水：今日 + 近 7 天日均 ---
+    wt_day = sum(to_float(x.get('ml'), 0) or 0
+                 for x in ((water.get(today) or {}).get('logs') or []))
+    wdays = sorted(water.keys())[-7:]
+    wavg = (math.floor(sum(
+        sum(to_float(x.get('ml'), 0) or 0 for x in ((water[k] or {}).get('logs') or []))
+        for k in wdays) / len(wdays) + 0.5)) if wdays else 0
+
+    # --- 运动：近 7 天总量（week_days 由 JS 传入，避免 Python 再算日期） ---
+    wm = wk = 0
+    for d in (week_days or []):
+        st = ex_stat(ex.get(d) or [])
+        wm += st['min']
+        wk += st['kcal']
+
+    g = kcal_goal(settings)
     ds = diet_sum(diet.get(today) or [])
-    wd = water.get(today) or {}
-    wt = sum(to_float(x.get('ml'), 0) or 0 for x in (wd.get('logs') or []))
     return {
-        'sleep': {'avg_h': avg_h, 'avg_score': avg_s, 'days': len(skeys)},
-        'kcal': {'goal': g['goal'], 'today': ds['k'], 'protein': ds['p']},
-        'water': {'today': wt, 'goal': to_float((db.get('settings') or {}).get('goal'), 2000)},
-        'ex_today': ex_stat(ex.get(today) or []),
+        'sleep': {'avg_h': avg_h, 'avg_score': avg_s, 'days': len(skeys),
+                  'late': late, 'tired': tired},
+        'kcal': {'goal': g['goal'], 'today': ds['k'], 'protein': ds['p'],
+                 'items': len(diet.get(today) or [])},
+        'water': {'today': wt_day, 'goal': to_float(settings.get('goal'), 2000) or 2000,
+                  'avg7': wavg},
+        'ex': {'minutes7': wm, 'kcal7': wk,
+               'goal_min': to_float(settings.get('goalMin'), 30) or 30},
     }
 
 

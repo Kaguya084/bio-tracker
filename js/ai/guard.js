@@ -29,12 +29,15 @@ function spDateRange(start, end){
   while(d<=e){ out.push(fmt(d)); d.setDate(d.getDate()+1); }
   return out;
 }
-function spSummarizeExercise(start, end){
+/* fallback: 与 py/main.py 同规格。第三参数仅供一致性验证传入 fixture，
+   现有调用只传 (start,end)，行为完全不变。 */
+function spSummarizeExercise(start, end, exByDate){
+  const exSource = exByDate || DB.ex;
   // 收集区间内所有有效/异常/缺失
   const allDays = spDateRange(start, end);
   const inSpan=[];      // {date, items}
   allDays.forEach(d=>{
-    const arr = DB.ex[d];
+    const arr = exSource[d];
     if(!arr || !arr.length) return;
     inSpan.push({date:d, items:spNormalize(arr)});
   });

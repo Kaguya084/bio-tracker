@@ -1247,6 +1247,7 @@
 </div>
 
 <!-- 核心层：工具 → 事件总线 → 数据层（顺序不可颠倒，均使用全局 const） -->
+<script src="./js/ai/pyverify.js"></script>
 <script src="./js/core/util.js"></script>
 <script src="./js/core/bus.js"></script>
 <script src="./js/core/store.js"></script>
@@ -2111,7 +2112,9 @@ function previewSleep(){
   const r={bed:document.getElementById('bedtime').value,wake:document.getElementById('waketime').value,
     lat:+document.getElementById('latency').value||0,awake:+document.getElementById('awake').value||0,
     q:+document.getElementById('quality').value||3};
-  const c=sleepCalc(r);if(!c)return;
+  const P=pyCall('sleep_score',{r:r});
+  const c=P.ok ? P.data : sleepCalc(r);  // Python 优先，JS 降级
+  if(!c)return;
   document.getElementById('sPreview').innerHTML=
     `卧床 <b>${c.hib}h</b> ｜ 实际睡眠 <b style="color:var(--rose)">${c.h}h</b>
      ｜ 效率 <b>${c.eff}%</b> ｜ 评分 <b style="color:var(--gold);font-size:15px">${c.score}</b> 分`;
@@ -2598,7 +2601,9 @@ function renderSport(){
   }
   const start=startEl.value, end=endEl.value;
   if(start>end){return;}
-  const s=spSummarizeExercise(start, end);
+  /* Python 优先，JS 降级：PyScript 未就绪或异常时行为与改造前完全一致 */
+  const P=pyCall('sp_summarize_exercise',{ex:DB.ex,start:start,end:end});
+  const s=P.ok ? P.data : spSummarizeExercise(start, end);
 
   document.getElementById('spTotal').textContent=s.totals.minutes;
   document.getElementById('spCov').textContent=s.coverage.days_with_valid_record+'/'+s.coverage.total_days;
@@ -2608,7 +2613,8 @@ function renderSport(){
   document.getElementById('spTrend').textContent=s.trend.direction;
   document.getElementById('spPeriodTag').textContent=start+' ~ '+end;
 
-  document.getElementById('spNotes').innerHTML=spHumanNotes(s).map(n=>'<div class="hint">· '+esc(n)+'</div>').join('');
+  const notes = s._notes || spHumanNotes(s);  // Python 结果自带 notes，避免二次跨桥
+  document.getElementById('spNotes').innerHTML=notes.map(n=>'<div class="hint">· '+esc(n)+'</div>').join('');
 
   let dHtml='<div style="font-size:12.5px;line-height:2">';
   dHtml+='<div><b>逐日运动时长</b>（缺失的日子不出现，也不按 0 计入）</div>';
@@ -3037,27 +3043,45 @@ function drawChart2(){
 /* ---------- 解读 / 小行动 ---------- */
 function buildInsight(){
   const out=[];
+  const days=last7();
+  /* Python 计算内核优先；未就绪时完全回退到下面的 JS 原逻辑 */
+  const PY=pyCall('insight_metrics',{db:DB,today:TODAY,week_days:days});
+
+  // JS 降级路径（原逻辑，保持行为一致）
   const ks=Object.keys(DB.sleep).sort().slice(-7);
   const wdays=Object.keys(DB.water).sort().slice(-7);
-  const wavg=wdays.length?Math.round(wdays.reduce((a,k)=>a+DB.water[k].logs.reduce((x,y)=>x+y.ml,0),0)/wdays.length):0;
-  const wgoal=+DB.settings.goal||2000,wt=todayTotal();
-
+  const wavgJS=wdays.length?Math.round(wdays.reduce((a,k)=>a+DB.water[k].logs.reduce((x,y)=>x+y.ml,0),0)/wdays.length):0;
+  const wgoalJS=+DB.settings.goal||2000;
+  let avgH,avgS,late,tired;
   if(ks.length){
     const cs=ks.map(k=>sleepCalc(DB.sleep[k]));
-    const avgH=cs.reduce((a,b)=>a+b.h,0)/cs.length;
-    const avgS=Math.round(cs.reduce((a,b)=>a+b.score,0)/cs.length);
-    const late=ks.filter(k=>DB.sleep[k].bed>='23:45'||DB.sleep[k].bed<'05:00').length;
-    const tired=ks.filter(k=>(+DB.sleep[k].q||3)<=2).length;
-    out.push({t:'近 7 天平均睡眠 <b>'+avgH.toFixed(1)+' 小时</b>，评分 <b>'+avgS+'</b> 分。',c:avgH<7?'b':'g'});
-    if(late>=3)out.push({t:'有 <b>'+late+' 天在 23:45 后才睡</b>，入睡偏晚是最值得先改的一件事。',c:'b'});
-    if(tired>=3)out.push({t:'这周有 '+tired+' 天醒来感觉累，<b>晚睡 → 睡不够 → 白天没精神</b>的链条比较明显。',c:'b'});
+    avgH=cs.reduce((a,b)=>a+b.h,0)/cs.length;
+    avgS=Math.round(cs.reduce((a,b)=>a+b.score,0)/cs.length);
+    late=ks.filter(k=>DB.sleep[k].bed>='23:45'||DB.sleep[k].bed<'05:00').length;
+    tired=ks.filter(k=>(+DB.sleep[k].q||3)<=2).length;
   }
-  const days=last7(),gm=+DB.settings.goalMin||30;
-  const wm=days.reduce((a,d)=>a+exStat(d).min,0),wk=days.reduce((a,d)=>a+exStat(d).kcal,0);
+  const wmJS=days.reduce((a,d)=>a+exStat(d).min,0),wkJS=days.reduce((a,d)=>a+exStat(d).kcal,0);
+  const GJS=kcalGoal(),dsJS=dietSum(),itemsJS=(DB.diet[TODAY]||[]).length;
+  const wtJS=todayTotal();
+
+  // 统一取值：Python 就绪则用其结果，否则用 JS
+  const D=PY.ok?PY.data:null;
+  const avgH2=D?D.sleep.avg_h:avgH, avgS2=D?D.sleep.avg_score:avgS;
+  const late2=D?D.sleep.late:late, tired2=D?D.sleep.tired:tired;
+  const wm=D?D.ex.minutes7:wmJS, wk=D?D.ex.kcal7:wkJS;
+  const gm=D?D.ex.goal_min:(+DB.settings.goalMin||30);
+  const G=D?{goal:D.kcal.goal}:GJS, ds=D?{k:D.kcal.today,p:D.kcal.protein}:dsJS;
+  const items=D?D.kcal.items:itemsJS;
+  const wgoal=D?D.water.goal:wgoalJS, wt=D?D.water.today:wtJS, wavg=D?D.water.avg7:wavgJS;
+
+  if(ks.length){
+    out.push({t:'近 7 天平均睡眠 <b>'+Number(avgH2).toFixed(1)+' 小时</b>，评分 <b>'+avgS2+'</b> 分。',c:avgH2<7?'b':'g'});
+    if(late2>=3)out.push({t:'有 <b>'+late2+' 天在 23:45 后才睡</b>，入睡偏晚是最值得先改的一件事。',c:'b'});
+    if(tired2>=3)out.push({t:'这周有 '+tired2+' 天醒来感觉累，<b>晚睡 → 睡不够 → 白天没精神</b>的链条比较明显。',c:'b'});
+  }
   if(wm>0)out.push({t:'本周运动 <b>'+wm+' 分钟</b>，消耗 <b>'+wk+' kcal</b>（约 '+(wk/7700).toFixed(2)+' kg 脂肪）。'+(wm>=150?'已达到每周 150 分钟建议量 👏':'距离每周 150 分钟还差 '+(150-wm)+' 分钟。'),c:'g'});
   else out.push({t:'本周还没有运动记录，建议每天先动 <b>'+gm+' 分钟</b>，从快走开始最容易坚持。',c:'g'});
 
-  const G=kcalGoal(),ds=dietSum(),items=(DB.diet[TODAY]||[]).length;
   if(items===0)out.push({t:'今天还没记录饮食，推荐摄入约 <b>'+G.goal+' kcal</b>，去「饮食」页记一笔或套用今日推荐食谱。',c:'a'});
   else if(ds.k>G.goal*1.15)out.push({t:'今天吃了 <b>'+ds.k+' kcal</b>，比推荐（'+G.goal+' kcal）多 '+(ds.k-G.goal)+' kcal，晚餐可以清淡些。',c:'a'});
   else if(ds.k<G.goal*0.6)out.push({t:'今天只吃了 <b>'+ds.k+' kcal</b>，明显低于推荐（'+G.goal+' kcal），长期吃太少会让代谢变慢。',c:'a'});
@@ -3393,11 +3417,16 @@ setInterval(()=>{if(today()!==TODAY)location.reload();},60000);
 if('serviceWorker' in navigator && location.protocol!=='file:'){
   window.addEventListener('load',()=>{navigator.serviceWorker.register('./sw.js').catch(()=>{});});
 }
+/* Python 引擎就绪后静默重算一次（首屏已由 JS 完整渲染，用户无感知） */
+window.addEventListener('pyboost:ready',()=>{
+  try{ renderAll(); }catch(e){ console.warn('[py] re-render failed',e); }
+});
 </script>
 
 <!-- ============ 浏览器内 Python（PyScript）· 计算思维课程作业 ============ -->
 <div id="pyStatus" class="py-status loading" aria-live="polite">Python 引擎加载中…（页面功能可正常使用）</div>
 <button class="py-src-btn" onclick="showPySource()" title="查看浏览器内运行的 Python 源码">🐍 查看 Python 源码</button>
+<button class="py-src-btn" style="bottom:88px;" onclick="showParity()" title="JS 与 Python 双实现一致性验证">✓ 验证一致性</button>
 <!-- 源码内联块：由 node tools/embed_py.mjs 从 py/main.py 同步；file:// 下无法 fetch 本地 .py -->
 <script type="text/plain" id="py-src"># =================================================================
 # 校园健康助手 · 浏览器内 Python 计算内核
@@ -3479,10 +3508,10 @@ def date_range(start, end):
 # =================================================================
 # 分区二：运动统计（镜像 js/ai/guard.js 的 sp* 系列）
 # =================================================================
-def sp_summarize_exercise(ex_by_date, start, end):
-    """输入：ex_by_date = {'2026-11-27': [{t,min,int,kcal,note}, ...]}
+def sp_summarize_exercise(ex, start, end):
+    """输入：ex = {'2026-11-27': [{t,min,int,kcal,note}, ...]}
     输出：与 JS spSummarizeExercise 同结构的 dict（字段逐一对齐）。"""
-    ex_by_date = ex_by_date or {}
+    ex_by_date = ex or {}
     all_days = date_range(start, end)
     per_day = {}
     by_type = {}
@@ -3697,30 +3726,50 @@ def ex_stat(items):
     return {'min': total_m, 'kcal': total_k}
 
 
-def insight_metrics(db, today):
-    """总览页洞察的纯计算部分：一次跨桥返回全部指标，避免多次调用。"""
+def insight_metrics(db, today, week_days=None):
+    """总览页洞察的全部纯计算：一次跨桥返回，DOM 拼接仍由 JS 负责。"""
     db = db or {}
+    settings = db.get('settings') or {}
     sleep = db.get('sleep') or {}
     water = db.get('water') or {}
     diet = db.get('diet') or {}
     ex = db.get('ex') or {}
+
+    # --- 睡眠：近 7 天均值 + 晚睡/疲惫天数 ---
     skeys = sorted(sleep.keys())[-7:]
-    if skeys:
-        scores = [sleep_score(sleep[k]) for k in skeys]
-        scores = [x for x in scores if x]
-        avg_h = rhalf(sum(x['h'] for x in scores) / len(scores), 1) if scores else None
-        avg_s = math.floor(sum(x['score'] for x in scores) / len(scores) + 0.5) if scores else None
-    else:
-        avg_h = avg_s = None
-    g = kcal_goal(db.get('settings'))
+    scores = [x for x in (sleep_score(sleep[k]) for k in skeys) if x]
+    avg_h = rhalf(sum(x['h'] for x in scores) / len(scores), 1) if scores else None
+    avg_s = math.floor(sum(x['score'] for x in scores) / len(scores) + 0.5) if scores else None
+    late = sum(1 for k in skeys
+               if str(sleep[k].get('bed', '')) >= '23:45' or str(sleep[k].get('bed', '')) < '05:00')
+    tired = sum(1 for k in skeys if (to_float(sleep[k].get('q'), 3) or 3) <= 2)
+
+    # --- 饮水：今日 + 近 7 天日均 ---
+    wt_day = sum(to_float(x.get('ml'), 0) or 0
+                 for x in ((water.get(today) or {}).get('logs') or []))
+    wdays = sorted(water.keys())[-7:]
+    wavg = (math.floor(sum(
+        sum(to_float(x.get('ml'), 0) or 0 for x in ((water[k] or {}).get('logs') or []))
+        for k in wdays) / len(wdays) + 0.5)) if wdays else 0
+
+    # --- 运动：近 7 天总量（week_days 由 JS 传入，避免 Python 再算日期） ---
+    wm = wk = 0
+    for d in (week_days or []):
+        st = ex_stat(ex.get(d) or [])
+        wm += st['min']
+        wk += st['kcal']
+
+    g = kcal_goal(settings)
     ds = diet_sum(diet.get(today) or [])
-    wd = water.get(today) or {}
-    wt = sum(to_float(x.get('ml'), 0) or 0 for x in (wd.get('logs') or []))
     return {
-        'sleep': {'avg_h': avg_h, 'avg_score': avg_s, 'days': len(skeys)},
-        'kcal': {'goal': g['goal'], 'today': ds['k'], 'protein': ds['p']},
-        'water': {'today': wt, 'goal': to_float((db.get('settings') or {}).get('goal'), 2000)},
-        'ex_today': ex_stat(ex.get(today) or []),
+        'sleep': {'avg_h': avg_h, 'avg_score': avg_s, 'days': len(skeys),
+                  'late': late, 'tired': tired},
+        'kcal': {'goal': g['goal'], 'today': ds['k'], 'protein': ds['p'],
+                 'items': len(diet.get(today) or [])},
+        'water': {'today': wt_day, 'goal': to_float(settings.get('goal'), 2000) or 2000,
+                  'avg7': wavg},
+        'ex': {'minutes7': wm, 'kcal7': wk,
+               'goal_min': to_float(settings.get('goalMin'), 30) or 30},
     }
 
 
