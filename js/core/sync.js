@@ -1,17 +1,15 @@
 /* =================================================================
    云同步层（本地优先 + 可选上云）
-   - 默认关闭：不配置 syncCode 时，所有操作都是纯本地 no-op
-   - 配对码：6 位码关联多设备，不依赖账号
+   - 默认关闭：未登录时所有操作都是纯本地 no-op
+   - 身份：由 Auth 模块注入 uid + token（CloudBase 官方 Auth）
    - 冲突：字段级 last-write-wins（按 updated_at）
    - journal（心情日记）永不进入 changes —— 隐私硬约束
-   依赖：store.js（DB）、bus.js（Bus）
+   依赖：store.js（DB）、bus.js（Bus）、auth.js（注入身份）
    ================================================================= */
 const Sync = (() => {
   const LS_DEVICE = 'bio_device_id';
-  const LS_CODE = 'bio_sync_code';
-  const LS_ENABLED = 'bio_sync_enabled';
   const LS_LAST = 'bio_sync_last';
-  const ENDPOINT = () => window.SYNC_ENDPOINT || ''; // 部署后在 index.html 顶部配置
+  const ENDPOINT = () => window.SYNC_ENDPOINT || ''; // 云函数网关地址
 
   const deviceId = (() => {
     let id = localStorage.getItem(LS_DEVICE);
@@ -19,8 +17,11 @@ const Sync = (() => {
     return id;
   })();
 
-  const isOn = () => localStorage.getItem(LS_ENABLED) === '1' && !!localStorage.getItem(LS_CODE);
-  const code = () => localStorage.getItem(LS_CODE);
+  /* 身份由 auth.js 注入；getUid/getToken 是返回 Promise 的异步函数 */
+  let identity = null;
+  const isOn = () => !!(identity && typeof identity.getUid === 'function');
+  const setIdentityFromAuth = (fns) => { identity = fns; };
+  const clearIdentity = () => { identity = null; };
 
   /* 可同步的桶；journal 明确排除 */
   const SYNC_BUCKETS = ['water', 'sleep', 'diet', 'ex', 'steps', 'foods', 'sportProfile', 'sportPlans', 'sportFeedbacks'];
@@ -88,10 +89,14 @@ const Sync = (() => {
 
   async function call(op, extra) {
     if (!ENDPOINT()) throw new Error('云端地址未配置（本地模式）');
+    if (!isOn()) throw new Error('未登录');
+    const token = await identity.getToken();
     const resp = await fetch(ENDPOINT() + '/sync', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(Object.assign({ op, sync_code: code(), device_id: deviceId }, extra || {}))
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify(Object.assign({ op, device_id: deviceId }, extra || {}))
     });
+    if (resp.status === 401) throw new Error('登录已过期，请重新登录');
     const data = await resp.json();
     if (!data.ok) throw new Error(data.error || '同步失败');
     return data.data;
@@ -100,37 +105,30 @@ const Sync = (() => {
   return {
     deviceId,
     isOn,
-    code,
-    enable(c) {
-      localStorage.setItem(LS_CODE, String(c).trim().toUpperCase());
-      localStorage.setItem(LS_ENABLED, '1');
-    },
-    disable() { localStorage.setItem(LS_ENABLED, '0'); },
-    /* 创建配对码：云端不可用时本地生成一个（仅作演示，云端正式码以服务端返回为准） */
-    async createCode() {
-      if (!ENDPOINT()) return 'LOCAL-' + Math.random().toString(36).slice(2, 8).toUpperCase();
-      const d = await call('create', {});
-      return d.sync_code;
-    },
+    setIdentityFromAuth: setIdentityFromAuth,
+    clearIdentity: clearIdentity,
     async push() {
       if (!isOn()) return { skipped: true };
       const rows = await call('push', { changes: collectChanges() });
-      // 修复：不再写 LS_LAST。原逻辑上传后把游标推到"现在"，导致本机下次
-      // 下载时 since=now，把其他设备在此之前上传的数据全部过滤掉（iOS 下载失败的根因）。
+      // 不写 LS_LAST：避免上传后把游标推到"现在"导致后续拉取过滤掉他机数据。
       return { applied: rows };
     },
     async pull() {
       if (!isOn()) return { skipped: true, rows: [] };
-      // 全量拉取：since=0 时服务端不加 updated_at 过滤。
-      // 是否应用由 applyChanges 逐条按 bio_ts 做 LWW 判断，避免依赖设备间不可靠的时间游标。
+      // 全量拉取；是否应用由 applyChanges 逐条按 bio_ts 做 LWW 判断。
       const rows = await call('pull', { since: 0 });
       applyChanges(rows);
-      localStorage.setItem(LS_LAST, String(Date.now())); // 仅用于状态显示，不再作为过滤条件
+      localStorage.setItem(LS_LAST, String(Date.now())); // 仅状态显示
       return { applied: rows.length };
     },
     /* 供设置页显示状态 */
     status() {
-      return { on: isOn(), code: code(), device: deviceId, last: localStorage.getItem(LS_LAST) || '—' };
+      return {
+        on: isOn(),
+        email: localStorage.getItem('bio_auth_email') || '',
+        device: deviceId,
+        last: localStorage.getItem(LS_LAST) || '—'
+      };
     }
   };
 })();

@@ -1199,15 +1199,24 @@
         <button class="btn" onclick="saveSettings();renderAll();">保存设置</button>
       </div>
       <div class="card">
-        <h2>☁️ 跨设备同步 <span class="tag">本地优先 · 可选</span></h2>
-        <p class="hint" style="margin:0 0 14px;">默认关闭，数据只存本机。开启后用一个 6 位配对码把 iPhone 与电脑关联；心情日记永不上传。云端未配置时功能自动降级为纯本地，不影响使用。</p>
+        <h2>☁️ 账号与同步 <span class="tag">本地优先 · 可选</span></h2>
+        <p class="hint" style="margin:0 0 14px;">未登录时数据只存本机。登录后可在 iPhone 与电脑间同步；心情日记永不上传。密码不保存在本机，由 CloudBase 官方账号体系管理。</p>
         <div class="form-row">
-          <div class="field"><label>配对码</label><input type="text" id="syncCode" placeholder="6 位码" maxlength="6" style="text-transform:uppercase;"></div>
+          <div class="field"><label>邮箱</label><input type="email" id="authEmail" placeholder="name@example.com" autocomplete="username"></div>
+          <div class="field"><label>密码</label><input type="password" id="authPassword" placeholder="至少 6 位" autocomplete="current-password"></div>
+        </div>
+        <div class="form-row" id="verifyRow" style="display:none;">
+          <div class="field" style="flex:1 1 100%;"><label>邮箱验证码（注册时填写）</label>
+            <input type="text" id="authCode" placeholder="6 位数字" autocomplete="one-time-code" inputmode="numeric" maxlength="6"></div>
+        </div>
+        <div class="form-row">
           <div class="field"><label>状态</label><input type="text" id="syncStatus" readonly style="opacity:.75;"></div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
-          <button class="btn ghost" onclick="uiSyncEnable()">🔗 启用同步</button>
-          <button class="btn ghost" onclick="uiSyncDisable()">✂️ 关闭同步</button>
+          <button class="btn ghost" onclick="uiRegister()">📧 注册（发验证码）</button>
+          <button class="btn ghost" onclick="uiVerify()">✅ 验证并登录</button>
+          <button class="btn ghost" onclick="uiLogin()">🔑 登录</button>
+          <button class="btn ghost" onclick="uiLogout()">🚪 登出</button>
           <button class="btn ghost" onclick="uiSyncPush()">⬆️ 上传本机</button>
           <button class="btn ghost" onclick="uiSyncPull()">⬇️ 拉取云端</button>
         </div>
@@ -1246,15 +1255,18 @@
   </div>
 </div>
 
-<!-- 核心层：工具 → 事件总线 → 数据层（顺序不可颠倒，均使用全局 const） -->
+<!-- CloudBase 官方 Auth SDK（全局变量 cloudbase，公开 accessKey 在 auth.js） -->
+<script src="https://static.cloudbase.net/cloudbase-js-sdk/latest/cloudbase.full.js"></script>
+<!-- 核心层：工具 → 事件总线 → 数据层 → 账号 → 同步（顺序不可颠倒，均使用全局 const） -->
 <!-- 版本号强制刷新缓存：改动 JS 时递增 v=N，避免浏览器加载旧脚本导致验证异常 -->
-<script src="./js/ai/pyverify.js?v=2"></script>
-<script src="./js/core/util.js?v=2"></script>
-<script src="./js/core/bus.js?v=2"></script>
-<script src="./js/core/store.js?v=2"></script>
-<script src="./js/core/sync.js?v=2"></script>
-<script src="./js/ai/guard.js?v=2"></script>
-<script src="./js/schedule/bridge.js?v=2"></script>
+<script src="./js/ai/pyverify.js?v=3"></script>
+<script src="./js/core/util.js?v=3"></script>
+<script src="./js/core/bus.js?v=3"></script>
+<script src="./js/core/store.js?v=3"></script>
+<script src="./js/core/auth.js?v=3"></script>
+<script src="./js/core/sync.js?v=3"></script>
+<script src="./js/ai/guard.js?v=3"></script>
+<script src="./js/schedule/bridge.js?v=3"></script>
 <script>
 /* 云端地址：CloudBase HTTP 网关路由 /api（bio-api 函数）
    同步已可直接用；AI 需服务端配置 DEEPSEEK_API_KEY 后才生效，否则自动降级离线模板。 */
@@ -2740,12 +2752,13 @@ const PROMPT_REVISE = `你是面向大学生的日常生活方式助手。
 \`\`\`
 未完成且原因是「没时间」：缩短时长，或挪到空档；「太累」：降低强度；「场地不方便」：改宿舍或空地。禁止输出“继续努力”等废话。`;
 
-// 统一的 API 请求：密钥只存服务端，前端不再持有（未部署云端时抛错 → 自动降级 Mock）
+// 统一的 API 请求：密钥只存服务端；需登录，未登录/失败时自动降级离线 Mock
 async function callAI(systemPrompt, userPayload) {
   if (!window.AI_ENDPOINT) throw new Error("云端 AI 代理未配置，使用离线模板");
+  if (typeof Auth === 'undefined' || !(await Auth.isOn())) throw new Error("未登录，使用离线模板");
   const resp = await fetch(window.AI_ENDPOINT + '/ai', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (await Auth.token()) },
     body: JSON.stringify({ system: systemPrompt, payload: userPayload })
   });
   if (!resp.ok) {
@@ -3175,29 +3188,61 @@ function applyTheme(t){
   r.setProperty('--pink',c[2]);r.setProperty('--pink-2',c[3]);
 }
 
-/* ---------- 云同步 UI ---------- */
+/* ---------- 账号与云同步 UI ---------- */
 function syncMsg(t){const el=document.getElementById('syncMsg');if(el)el.textContent=t;}
 function renderSyncStatus(){
   const st=Sync.status();
-  const codeEl=document.getElementById('syncCode'), statusEl=document.getElementById('syncStatus');
-  if(codeEl&&!codeEl.value)codeEl.value=st.code||'';
-  if(statusEl)statusEl.value=st.on?('已启用 · 上次 '+st.last):'未启用（纯本地）';
+  const statusEl=document.getElementById('syncStatus');
+  const emailEl=document.getElementById('authEmail');
+  if(emailEl&&!emailEl.value&&st.email)emailEl.value=st.email;
+  if(statusEl)statusEl.value=st.on?('已登录 · '+st.email+' · 上次 '+st.last):'未登录（纯本地）';
 }
-async function uiSyncEnable(){
-  const c=(document.getElementById('syncCode').value||'').trim().toUpperCase();
-  if(!/^[A-Z0-9]{4,8}$/.test(c)){syncMsg('请输入 4–8 位配对码（字母或数字）');return;}
-  Sync.enable(c);renderSyncStatus();
-  syncMsg('同步已启用。云端未部署时可正常使用本地功能；部署后即可跨设备同步。');
+function cred(){
+  const email=(document.getElementById('authEmail').value||'').trim();
+  const password=document.getElementById('authPassword').value||'';
+  return {email,password};
 }
-function uiSyncDisable(){
-  Sync.disable();renderSyncStatus();syncMsg('已关闭同步，数据回到纯本地模式。');
+async function uiRegister(){
+  const {email,password}=cred();
+  if(!email||!email.includes('@')){syncMsg('请先填写邮箱');return;}
+  if(password.length<6){syncMsg('密码至少 6 位');return;}
+  try{
+    const r=await Auth.register(email,password,null); // 第一步：只发验证码
+    if(r.ok){document.getElementById('verifyRow').style.display='';
+      syncMsg('验证码已发往 '+email+'，请在上方填入后点「验证并登录」。');}
+    else syncMsg(r.msg);
+  }catch(e){syncMsg('注册失败：'+e.message);}
+}
+async function uiVerify(){
+  const {email,password}=cred();
+  const code=(document.getElementById('authCode').value||'').trim();
+  if(!code){syncMsg('请填写邮箱收到的 6 位验证码');return;}
+  try{
+    const r=await Auth.register(email,password,code);
+    if(r.ok){document.getElementById('verifyRow').style.display='none';renderSyncStatus();
+      syncMsg('注册成功，已登录。可点「拉取云端」同步数据。');}
+    else syncMsg(r.msg);
+  }catch(e){syncMsg('验证失败：'+e.message);}
+}
+async function uiLogin(){
+  const {email,password}=cred();
+  if(!email||!password){syncMsg('请填写邮箱与密码');return;}
+  try{
+    const r=await Auth.login(email,password);
+    if(r.ok){renderSyncStatus();syncMsg('登录成功，可上传/拉取数据。');}
+    else syncMsg(r.msg);
+  }catch(e){syncMsg('登录失败：'+e.message);}
+}
+async function uiLogout(){
+  await Auth.signOut();renderSyncStatus();
+  syncMsg('已登出，数据回到纯本地模式。');
 }
 async function uiSyncPush(){
-  try{const r=await Sync.push();syncMsg(r.skipped?'未启用同步。':('已上传 '+(r.applied||[]).length+' 条记录。'));}
+  try{const r=await Sync.push();syncMsg(r.skipped?'请先登录。':('已上传 '+(r.applied||[]).length+' 条记录。'));}
   catch(e){syncMsg('上传失败：'+e.message+'（本地数据未受影响）');}
 }
 async function uiSyncPull(){
-  try{const r=await Sync.pull();syncMsg(r.skipped?'未启用同步。':('已合并 '+r.applied+' 条记录。'));renderAll();}
+  try{const r=await Sync.pull();syncMsg(r.skipped?'请先登录。':('已合并 '+r.applied+' 条记录。'));renderAll();}
   catch(e){syncMsg('拉取失败：'+e.message+'（本地数据未受影响）');}
 }
 function exportData(){
@@ -3418,8 +3463,14 @@ document.getElementById('eDate').value=TODAY;
 initExSelect();
 loadSettings();
 loadProfile();
-renderSyncStatus();
 renderAll();
+/* 恢复 CloudBase 会话：有登录则自动拉取云端数据一次 */
+if(typeof Auth!=='undefined'){
+  Auth.restore().then(u=>{
+    if(u){Sync.pull().then(()=>renderAll()).catch(()=>{});}
+    renderSyncStatus();
+  }).catch(()=>renderSyncStatus());
+}else renderSyncStatus();
 genAction();
 askNotify();
 setInterval(tick,1000);tick();
@@ -3918,6 +3969,6 @@ try:
 except Exception as _e:
     print('[py] bootstrap failed:', _e)
 </script>
-<script src="./js/ai/pybridge.js?v=2"></script>
+<script src="./js/ai/pybridge.js?v=3"></script>
 </body>
 </html>
