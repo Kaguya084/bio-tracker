@@ -1,0 +1,4 @@
+# PyScript 配置：只用 Python 标准库，不装第三方包
+# 理由：numpy/pandas 会引入数 MB 的 WASM 下载，拖慢 iPhone 首屏；
+#       本项目全部统计用标准库 math/datetime/json 即可完成。
+packages = []
