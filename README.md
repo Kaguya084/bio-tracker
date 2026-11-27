@@ -73,6 +73,7 @@ bio-tracker/
   `https://project-labyrinth-d4dsyd0c9116e7-1539331770.ap-shanghai.app.tcloudbase.com/api`
 - 端到端实测通过：配对码创建、push/pull 往返、LWW 冲突解决（旧时间戳被拒绝）。
 - 云函数走官方 PG REST API（`Authorization: Bearer <服务端 key>`），不依赖 node-sdk 的 NoSQL/rdb 兼容层。
+- CORS：云函数动态反射请求 Origin（含 `file://` 的 `null`），无需配置安全域名；本地双击打开与 GitHub Pages 公网访问均可直连云端。
 
 ⏳ **唯一剩余项**：在线 AI 需在云函数环境变量配置 `DEEPSEEK_API_KEY`（用户自己的密钥）。
 未配置时 `/ai` 会报错并由前端自动降级到离线 Mock —— **不影响任何本地功能与同步功能**。
