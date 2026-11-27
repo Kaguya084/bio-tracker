@@ -1,0 +1,13 @@
+{
+  "name": "校园健康助手 · 迷宫计划",
+  "short_name": "迷宫健康",
+  "description": "喝水、饮食、睡眠、运动记录 → 数据解读 → 行动反馈",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#b5485a",
+  "icons": [
+    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

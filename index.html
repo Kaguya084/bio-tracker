@@ -2,8 +2,15 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>校园健康助手 · 喝水 · 饮食 · 睡眠 · 运动 · 日程</title>
+<!-- PWA / iOS 添加到主屏幕 -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="迷宫健康">
+<meta name="theme-color" content="#b5485a">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icon.svg">
 <style>
   /* 内嵌草书字体（柳建毛草子集，仅金句用字，离线可用） */
   @font-face{font-family:"LiuJianMaoCaoEmbedded";font-display:swap;
@@ -525,6 +532,7 @@
     <div class="tab" data-p="sport">🏃 运动</div>
     <div class="tab" data-p="diet">🍽 饮食</div>
     <div class="tab" data-p="water">💧 喝水</div>
+    <div class="tab" data-p="sleep">😴 睡眠</div>
     <div class="tab" data-p="schedule">📅 日程</div>
     <div class="tab" data-p="journal">😊 心情</div>
     <div class="tab" data-p="overview">📊 总览与建议</div>
@@ -3363,6 +3371,10 @@ askNotify();
 setInterval(tick,1000);tick();
 window.addEventListener('resize',()=>{drawSleepChart();drawExChart();drawChart2();});
 setInterval(()=>{if(today()!==TODAY)location.reload();},60000);
+/* PWA：仅在 http(s) 下注册，file:// 静默跳过 */
+if('serviceWorker' in navigator && location.protocol!=='file:'){
+  window.addEventListener('load',()=>{navigator.serviceWorker.register('./sw.js').catch(()=>{});});
+}
 </script>
 </body>
 </html>
