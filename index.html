@@ -1204,36 +1204,15 @@
   </div>
 </div>
 
+<!-- 核心层：工具 → 事件总线 → 数据层（顺序不可颠倒，均使用全局 const） -->
+<script src="./js/core/util.js"></script>
+<script src="./js/core/bus.js"></script>
+<script src="./js/core/store.js"></script>
 <script>
 /* =================================================================
-   0. 全局存储（与网页 2 原版一致，新增 sportProfile/plans/feedbacks）
+   0. 全局存储 / 工具函数已抽离至 js/core/{util,bus,store}.js
+   DB、K、save、today、TODAY、fmt、esc 由数据层在全局提供
    ================================================================= */
-const K='health_assistant_v3';
-const DB={water:{},sleep:{},diet:{},ex:{},foods:[],
-  settings:{weight:60,goal:2000,cup1:200,cup2:300,theme:'rose',
-  remind:true,interval:60,start:'08:00',end:'22:00',
-  height:170,age:30,sex:'f',act:1.55,adj:0,goalMin:30,goalKcal:200},
-  sportProfile:null, sportPlans:[], sportFeedbacks:[]};
-try{
-  const old=JSON.parse(localStorage.getItem('health_assistant_v2')||'null');
-  if(old&&!localStorage.getItem(K))localStorage.setItem(K,JSON.stringify(old));
-}catch(e){}
-try{Object.assign(DB,JSON.parse(localStorage.getItem(K)||'{}'));}catch(e){}
-DB.water=DB.water||{};DB.sleep=DB.sleep||{};DB.diet=DB.diet||{};DB.ex=DB.ex||{};DB.foods=DB.foods||[];
-DB.sportPlans=DB.sportPlans||[];DB.sportFeedbacks=DB.sportFeedbacks||[];
-DB.steps=DB.steps||{};DB.journal=DB.journal||{};
-function save(){localStorage.setItem(K,JSON.stringify(DB));}
-const today=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
-const TODAY=today();
-const fmt=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-const esc=s=>String(s).replace(/"/g,'&quot;');
-
-/* 旧版睡眠数组 → 新版对象 */
-Object.keys(DB.sleep).forEach(d=>{
-  const r=DB.sleep[d];
-  if(Array.isArray(r))DB.sleep[d]={bed:r[0],wake:r[1],lat:15,awake:0,q:Math.min(5,(+r[3]||1)+2),note:r[4]||''};
-});
-save();
 
 /* 示例数据初始化已移至文件末尾启动区（避免 TDZ：calcKcal 依赖的 EXS/INTF 是 const，
    在此处尚未初始化，调用会抛 ReferenceError 导致整个 script 中断、所有按钮失效） */
@@ -1490,7 +1469,7 @@ function stopLiveCount(btn){
 
 /* --- 记录系统：心情 / 重要事情 / 评估 --- */
 const MOOD_META={5:['😄','开心'],4:['🙂','不错'],3:['😐','一般'],2:['😔','低落'],1:['😣','糟糕']};
-const jesc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+/* jesc 已移至 js/core/util.js */
 function journalDay(d=TODAY){
   return DB.journal[d]||(DB.journal[d]={mood:0,note:'',events:[],review:null});
 }
@@ -2048,9 +2027,8 @@ function applyRecipe(){
 }
 
 /* =================================================================
-   4. 睡眠（原样保留）
+   4. 睡眠（原样保留；clamp 已移至 js/core/util.js）
    ================================================================= */
-const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 function sleepCalc(r){
   if(!r)return null;
   const [bh,bm]=r.bed.split(':').map(Number),[wh,wm]=r.wake.split(':').map(Number);
@@ -3137,8 +3115,7 @@ function renderFeedbackArea(plan){
 }
 
 
-/* ---------- 图表 ---------- */
-function last7(){const a=[];for(let i=6;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);a.push(fmt(d));}return a;}
+/* ---------- 图表（last7 已移至 js/core/util.js） ---------- */
 function prep(cv,h){
   const W=cv.clientWidth||560;cv.width=W*devicePixelRatio;cv.height=h*devicePixelRatio;cv.style.height=h+'px';
   const c=cv.getContext('2d');c.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
