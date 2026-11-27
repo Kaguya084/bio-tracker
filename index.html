@@ -976,7 +976,7 @@
         <span class="badge mock">MOCK</span>
         <span>输出来源：离线模板模式（不调用外部接口，格式与在线一致）</span>
       </div>
-      <button class="btn a" onclick="genExplain()">基于上方统计生成解释</button>
+      <button class="btn a" onclick="genExplain(this)">基于上方统计生成解释</button>
       <div id="explainResult"></div>
     </div>
 
@@ -1008,7 +1008,7 @@
 
     <div class="card" style="background:linear-gradient(150deg,rgba(255,255,255,.72),rgba(244,248,244,.6));border-style:dashed;">
       <h2>🎯 本周行动建议 <span class="tag g">可执行 · 带时间地点</span></h2>
-      <button class="btn g" onclick="genAdvise()">生成本周行动建议</button>
+      <button class="btn g" onclick="genAdvise(this)">生成本周行动建议</button>
       <div id="adviseResult"></div>
       <div id="adviseExplain" style="margin-top:10px;"></div>
     </div>
@@ -1023,22 +1023,24 @@
     </div>
   </div>
 
-  <!-- ============ 日程（iframe 嵌入网页 1） ============ -->
+  <!-- ============ 日程（外部站点，本地文件仅作离线备份） ============ -->
   <div class="page" id="p-schedule">
     <div class="schedule-bar">
-      <span>📅 校园日程助手 · 由 Project Labyrinth 独立部署</span>
+      <span>📅 校园日程助手 · 独立部署版</span>
       <span style="margin-left:auto;">
-        <a href="./Time_Table.html" target="_blank">在新窗口打开 ↗</a>
+        <a href="https://kaguya084.github.io/Time_Table/" target="_blank" rel="noopener">在新窗口打开 ↗</a>
       </span>
     </div>
     <div class="schedule-frame">
-      <iframe src="./Time_Table.html" title="校园日程助手"
-              loading="lazy"
-              sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads allow-modals"></iframe>
+      <!-- 跨源嵌入：不授予 allow-same-origin（跨源下无意义且更保守），保留脚本/表单/下载/弹窗能力 -->
+      <iframe src="https://kaguya084.github.io/Time_Table/" title="校园日程助手"
+              loading="lazy" referrerpolicy="no-referrer"
+              sandbox="allow-scripts allow-forms allow-popups allow-downloads allow-modals"></iframe>
     </div>
     <p class="hint" style="margin-top:12px;">
-      日程助手的权威数据由教务系统与 AI 解析生成，数据保存在其自身页面的 localStorage 中，与本页数据互不干扰。<br>
-      <strong>⚠️ 本地演示提示：</strong>如果双击打开此网页（file:// 协议）导致下方 iframe 白屏，属于浏览器安全限制。请点击右上角「在新窗口打开」独立演示，或在此文件夹运行 <code>python -m http.server 8000</code> 后通过 localhost 访问。
+      日程助手为<strong>独立部署的外部站点</strong>，课表与事项数据保存在该站点域名下的 localStorage 中，与本页健康数据物理隔离、互不读取。<br>
+      <strong>数据流转：</strong>在「运动」页生成行动建议后点「复制日程 JSON」，到日程页的「解析并预览」输入框粘贴，确认后导出 .ics 导入 iPhone 日历。<br>
+      <strong>⚠️ 离线兜底：</strong>若公网不可达，点击右上角链接无法加载时，可在本文件夹直接双击 <code>Time_Table.html</code>（已随项目保留的离线备份）独立使用，功能一致但数据不互通。
     </p>
   </div>
 
@@ -1700,9 +1702,14 @@ function fire(){
 function hideToast(){document.getElementById('toast').classList.remove('show');}
 function toastDrink(){addWater(+DB.settings.cup1||200);hideToast();}
 function testRemind(){fire();}
+let _audioCtx=null;  // 修复：复用单例，原实现每次提醒新建 AudioContext，最终触发浏览器数量上限
 function beep(){
   try{
-    const ctx=new (window.AudioContext||window.webkitAudioContext)();
+    const AC=window.AudioContext||window.webkitAudioContext;
+    if(!AC)return;
+    if(!_audioCtx)_audioCtx=new AC();
+    if(_audioCtx.state==='suspended')_audioCtx.resume();  // iOS 需在用户手势后恢复
+    const ctx=_audioCtx;
     [660,880].forEach((f,i)=>{
       const o=ctx.createOscillator(),g=ctx.createGain();
       o.connect(g);g.connect(ctx.destination);o.frequency.value=f;o.type='sine';
@@ -1893,9 +1900,9 @@ function onSearch(){
   if(!q){box.innerHTML='';return;}
   lastHits=ALLFOODS().filter(f=>f.n.indexOf(q)>=0||(f.t&&f.t.indexOf(q)>=0)).slice(0,10);
   let html=lastHits.map((f,i)=>`<div class="sug-item" onclick="pickFood(${i})">
-      <span>${f.n} <span class="kc">${f.t||''} · ${f.k} kcal/100g</span></span>
-      <span class="kc">${f.u||''} ${f.g||''}g</span></div>`).join('');
-  html+=`<div class="sug-item addnew" onclick="addCustom()">＋ 手动添加「${q.replace(/</g,'&lt;')}」到我的食物库</div>`;
+      <span>${esc(f.n)} <span class="kc">${esc(f.t||'')} · ${f.k} kcal/100g</span></span>
+      <span class="kc">${esc(f.u||'')} ${f.g||''}g</span></div>`).join('');
+  html+=`<div class="sug-item addnew" onclick="addCustom()">＋ 手动添加「${esc(q)}」到我的食物库</div>`;
   box.innerHTML=html;
 }
 function pickFood(i){
@@ -1969,14 +1976,20 @@ function renderMyFoods(){
 }
 
 function delMyFood(i){
-  if (!confirm('确定要删除「' + DB.foods[i].n + '」吗？\n删除后该食物将从你的库中移除。')) return;
+  const target = DB.foods[i];
+  if (!target) return;
+  if (!confirm('确定要删除「' + target.n + '」吗？\n删除后该食物将从你的库中移除。')) return;
+  // 修复：先用被删项比较再 splice，原代码在 splice 后比对 DB.foods[i] 已指向下一项，判断永远失效
+  const wasSelected = selFood && selFood.n === target.n;
   DB.foods.splice(i, 1);
   save();
   renderMyFoods();
-  // 如果搜索框刚好停留在这个食物，清空搜索
-  if (selFood && selFood.n === DB.foods[i]?.n) {
+  if (wasSelected) {
+    selFood = null; lastHits = [];
     document.getElementById('foodSearch').value = '';
     document.getElementById('sugList').innerHTML = '';
+    document.getElementById('picked').className = 'picked';
+    previewKcal();
   }
 }
 
@@ -2949,12 +2962,13 @@ function extractJsonFromText(text) {
 }
 
 // ----- 解释 -----
-async function genExplain(){
+async function genExplain(btnEl){
   const start=document.getElementById('spStart').value;
   const end=document.getElementById('spEnd').value;
   if(!start||!end){alert('请先选择统计区间');return;}
   
-  const btn = event.target;
+  // 修复：显式取按钮，不再依赖非标准的隐式全局 event
+  const btn = btnEl || document.activeElement;
   const oldText = btn.textContent;
   btn.textContent = "正在分析..."; btn.disabled = true;
   const s = spSummarizeExercise(start, end);
@@ -2974,12 +2988,12 @@ async function genExplain(){
 
 // ----- 建议 -----
 let _currentPlan=null;
-async function genAdvise(){
+async function genAdvise(btnEl){
   const start=document.getElementById('spStart').value;
   const end=document.getElementById('spEnd').value;
   if(!start||!end){alert('请先选择统计区间');return;}
   
-  const btn = event.target;
+  const btn = btnEl || document.activeElement;
   const oldText = btn.textContent;
   btn.textContent = "正在规划..."; btn.disabled = true;
   const s=spSummarizeExercise(start, end);
@@ -2988,7 +3002,11 @@ async function genAdvise(){
   try {
     const text = await callAI(PROMPT_ADVISE, `用户档案：${JSON.stringify(p)}\n近期数据：${JSON.stringify(spToPayload(s))}`);
     const parsed = extractJsonFromText(text);
-    if (parsed && parsed.actions) {
+    // 修复：入库前先校验字段并试转 JSON，避免坏数据先 push 再抛错导致重复计划
+    if (parsed && parsed.actions && Array.isArray(parsed.actions)) {
+      if (!parsed.actions.length || !parsed.actions.every(a => a && typeof a.when === 'string' && a.action_type))
+        throw new Error("AI 返回的行动项格式不完整");
+      actionsToScheduleJson(parsed.actions); // 试转，解析失败则抛错走 Mock 降级
       const cleanText = text.replace(/```json[\s\S]*?```/g, '').trim();
       const plan={id:'p'+Date.now().toString(36), created_at:new Date().toISOString().slice(0,19), items:parsed.actions, basis:Object.assign({},p)};
       DB.sportPlans.push(plan); save();
@@ -3036,7 +3054,10 @@ async function genRevise(){
   try {
     const text = await callAI(PROMPT_REVISE, `上一轮计划：${JSON.stringify(plan.items)}\n执行反馈：${JSON.stringify(feedbacks)}\n用户档案：${JSON.stringify(p)}`);
     const parsed = extractJsonFromText(text);
-    if (parsed && parsed.actions) {
+    if (parsed && parsed.actions && Array.isArray(parsed.actions)) {
+      if (!parsed.actions.length || !parsed.actions.every(a => a && typeof a.when === 'string' && a.action_type))
+        throw new Error("AI 返回的行动项格式不完整");
+      actionsToScheduleJson(parsed.actions); // 入库前试转，失败则走 Mock 降级
       const cleanText = text.replace(/```json[\s\S]*?```/g, '').trim();
       const newPlan={id:'p'+Date.now().toString(36), created_at:new Date().toISOString().slice(0,19), items:parsed.actions, basis:Object.assign({},p), from_plan:plan.id};
       DB.sportPlans.push(newPlan);
@@ -3327,9 +3348,13 @@ function applyTheme(t){
   r.setProperty('--pink',c[2]);r.setProperty('--pink-2',c[3]);
 }
 function exportData(){
-  const blob=new Blob([JSON.stringify(DB,null,2)],{type:'application/json'});
+  // 安全：API Key 不随备份离开本机（阶段 3 将由服务端托管后彻底移除该字段）
+  const safe=JSON.parse(JSON.stringify(DB));
+  if(safe.settings) delete safe.settings.apiKey;
+  const url=URL.createObjectURL(new Blob([JSON.stringify(safe,null,2)],{type:'application/json'}));
   const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);a.download='健康数据备份_'+TODAY+'.json';a.click();
+  a.href=url;a.download='健康数据备份_'+TODAY+'.json';a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 function importData(inp){
   const f=inp.files[0];if(!f)return;
@@ -3340,7 +3365,11 @@ function importData(inp){
     if(o.sportProfile)DB.sportProfile=o.sportProfile;
     if(o.sportPlans)DB.sportPlans=o.sportPlans;
     if(o.sportFeedbacks)DB.sportFeedbacks=o.sportFeedbacks;
+    if(o.steps)DB.steps=o.steps;                 // 修复：步数此前被导出却未被恢复
+    if(o.journal)DB.journal=o.journal;           // 修复：心情日记此前被导出却未被恢复
     if(!DB.diet[TODAY])DB.diet[TODAY]=[];if(!DB.ex[TODAY])DB.ex[TODAY]=[];
+    if(!DB.steps[TODAY])DB.steps[TODAY]={goal:8000,logs:[],synced:0};
+    if(!DB.journal[TODAY])DB.journal[TODAY]={mood:0,note:'',events:[],review:null};
     Object.keys(DB.sleep).forEach(d=>{const r=DB.sleep[d];
       if(Array.isArray(r))DB.sleep[d]={bed:r[0],wake:r[1],lat:15,awake:0,q:Math.min(5,(+r[3]||1)+2),note:r[4]||''};});
     save();loadSettings();renderAll();alert('导入成功');}catch(x){alert('文件格式不正确');}};
@@ -3356,7 +3385,9 @@ function clearAll(){
   if(!confirm('再次确认：真的要删除全部数据吗？'))return;
   DB.water={};DB.sleep={};DB.diet={};DB.ex={};DB.foods=[];
   DB.sportProfile=null;DB.sportPlans=[];DB.sportFeedbacks=[];
+  DB.steps={};DB.journal={};                    // 修复：步数与心情此前未被清空
   DB.water[TODAY]={goal:DB.settings.goal,logs:[]};DB.diet[TODAY]=[];DB.ex[TODAY]=[];
+  DB.steps[TODAY]={goal:8000,logs:[],synced:0};DB.journal[TODAY]={mood:0,note:'',events:[],review:null};
   save();renderAll();
 }
 function renderStats(){
