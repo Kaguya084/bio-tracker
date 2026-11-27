@@ -41,3 +41,7 @@ coverage/
 # index.legacy.html 是刻意的回退快照，正常纳入版本控制，勿加入忽略列表。
 # cloudbase/migrations/ 是版本化迁移，必须入库。
 # API Key 存于云端环境变量，不存本地文件；导出的备份 JSON 不含密钥。
+
+# Python 缓存
+__pycache__/
+*.py[cod]
