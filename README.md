@@ -63,13 +63,19 @@ bio-tracker/
 - 备份 JSON 已剔除 `apiKey` 字段；前端代码不再保存密钥。
 - 日程站为**独立域名**，其数据在 `kaguya084.github.io` 下，与本页物理隔离、互不读取。
 
-## 部署前必读（剩余待办）
+## CloudBase 接入状态
 
-云同步与在线 AI 的代码已就绪，但要真正启用还需 K 完成三项配置：
+✅ **已接通并实测**（环境 `project-labyrinth-d4dsyd0c9116e7`，PG 模式）：
 
-1. **创建 CloudBase API Key**（当前环境 `listApiKeys` 为空）→ 拿到 `publishableKey` 与服务端 `API Key`。
-2. **部署云函数** `bio-api`：设环境变量 `DEEPSEEK_API_KEY`，部署后在 `index.html` 顶部填 `window.AI_ENDPOINT` 与 `window.SYNC_ENDPOINT`。
-3. **确认云函数访问 PG 的 SDK 写法**：当前代码用 `@cloudbase/node-sdk` 的 `app.database()`（文档兼容层）；若 SHARED PG 不支持，需改为 `app.rdb()` 或 HTTP API。
+- `publishableKey` 与服务端 `api_key` 已由平台生成；服务端 key 只存云函数环境变量，不进代码库。
+- PG 表 `health_sync` / `sync_pairs` 已建（migration `20261127112852`）。
+- HTTP 云函数 `bio-api` 已部署为 `Active`，经网关路由 `/api` 对外提供：
+  `https://project-labyrinth-d4dsyd0c9116e7-1539331770.ap-shanghai.app.tcloudbase.com/api`
+- 端到端实测通过：配对码创建、push/pull 往返、LWW 冲突解决（旧时间戳被拒绝）。
+- 云函数走官方 PG REST API（`Authorization: Bearer <服务端 key>`），不依赖 node-sdk 的 NoSQL/rdb 兼容层。
+
+⏳ **唯一剩余项**：在线 AI 需在云函数环境变量配置 `DEEPSEEK_API_KEY`（用户自己的密钥）。
+未配置时 `/ai` 会报错并由前端自动降级到离线 Mock —— **不影响任何本地功能与同步功能**。
 
 > 以上未完成时，页面**照常可用**（纯本地 + 离线 Mock），只是没有跨设备同步与真实 AI。数据库表 `health_sync` / `sync_pairs` 已建好并通过迁移校验。
 

@@ -1237,9 +1237,10 @@
 <script src="./js/ai/guard.js"></script>
 <script src="./js/schedule/bridge.js"></script>
 <script>
-/* 云端地址：部署 bio-api 后填入其 HTTP 访问地址；留空则 AI 走离线模板、同步仅本地 */
-window.AI_ENDPOINT = '';
-window.SYNC_ENDPOINT = '';
+/* 云端地址：CloudBase HTTP 网关路由 /api（bio-api 函数）
+   同步已可直接用；AI 需服务端配置 DEEPSEEK_API_KEY 后才生效，否则自动降级离线模板。 */
+window.AI_ENDPOINT = 'https://project-labyrinth-d4dsyd0c9116e7-1539331770.ap-shanghai.app.tcloudbase.com/api';
+window.SYNC_ENDPOINT = window.AI_ENDPOINT;
 /* =================================================================
    0. 全局存储 / 工具函数已抽离至 js/core/{util,bus,store}.js
    DB、K、save、today、TODAY、fmt、esc 由数据层在全局提供

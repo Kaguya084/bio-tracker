@@ -1,32 +1,64 @@
 /* =================================================================
-   CloudBase 云函数 bio-api —— bio-tracker 的服务端代理
-   职责：
-   1) /ai   —— 代理 DeepSeek，API Key 只存服务端环境变量，前端永不接触
-   2) /sync —— 配对码同步：push(字段级 LWW) / pull / create-pair
-   数据表 health_sync / sync_pairs 已开启 RLS 且无策略（拒绝浏览器直连），
-   本函数使用服务端凭据访问，是唯一合法入口。
+   CloudBase HTTP Function bio-api —— bio-tracker 服务端代理
+   1) POST /ai   —— 代理 DeepSeek，DEEPSEEK_API_KEY 只存云端环境变量
+   2) POST /sync —— 配对码同步 push/pull/create，走 PG REST API
+   数据访问：https://{envId}.api.tcloudbasegateway.com/v1/rdb/rest/{table}
+   鉴权：Authorization: Bearer <CLOUDBASE_API_KEY>（service_role，绕过 RLS）
+   —— SHARED PG 无 NoSQL 后端；node-sdk 的 rdb() 运行时未实现，故用官方 REST 契约。
+   CORS：由 HTTP 网关按安全域名注入，函数本身不设置 Allow-Origin。
    ================================================================= */
-const tcb = require('@cloudbase/node-sdk');
 const https = require('https');
+const http = require('http');
+const { URL } = require('url');
 
-const app = tcb.init({ env: tcb.SYMBOL_CURRENT_ENV });
-const db = app.database();
+const ENV_ID = process.env.TCB_ENV_ID || 'project-labyrinth-d4dsyd0c9116e7';
+const API_KEY = process.env.CLOUDBASE_API_KEY || '';
+const PG_HOST = ENV_ID + '.api.tcloudbasegateway.com';
 
-/* 前端只认识这两个集合名；底层 PG 表由云端映射。兼容 NoSQL SDK 写法以适配
-   SHARED PG 的文档兼容层；若环境切换为纯 PG，请将此处改为 app.rdb().from()。 */
-const C_SYNC = 'health_sync';
-const C_PAIR = 'sync_pairs';
-
-function json(res, code, body) {
-  res.statusCode = code;
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.setHeader('Access-Control-Allow-Origin', '*');
+function sendJson(res, code, body) {
+  res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(body));
 }
+function readJsonBody(req) {
+  return new Promise((resolve, reject) => {
+    let raw = '';
+    req.on('data', c => raw += c);
+    req.on('end', () => {
+      if (!raw) return resolve({});
+      try { resolve(JSON.parse(raw)); } catch (e) { resolve({}); }
+    });
+    req.on('error', reject);
+  });
+}
 
-function readBody(event) {
-  if (event.body && typeof event.body === 'string') return JSON.parse(event.body);
-  return event.body || {};
+/* ---------- PG REST 通用请求 ---------- */
+function pgRequest(method, table, query, body, extraHeaders) {
+  return new Promise((resolve, reject) => {
+    if (!API_KEY) return reject(new Error('服务端未配置 CLOUDBASE_API_KEY'));
+    const path = '/v1/rdb/rest/' + table + (query ? '?' + query : '');
+    const payload = body != null ? JSON.stringify(body) : null;
+    const headers = Object.assign({
+      'Authorization': 'Bearer ' + API_KEY,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    }, extraHeaders || {});
+    if (payload) headers['Content-Length'] = Buffer.byteLength(payload);
+    const req = https.request({ hostname: PG_HOST, path, method, headers, timeout: 15000 }, resp => {
+      let raw = '';
+      resp.on('data', c => raw += c);
+      resp.on('end', () => {
+        if (resp.statusCode >= 200 && resp.statusCode < 300) {
+          try { resolve(raw ? JSON.parse(raw) : []); } catch (e) { resolve(raw); }
+        } else {
+          reject(new Error('PG ' + resp.statusCode + ': ' + raw.slice(0, 200)));
+        }
+      });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => req.destroy(new Error('PG 请求超时')));
+    if (payload) req.write(payload);
+    req.end();
+  });
 }
 
 /* ---------- AI 代理 ---------- */
@@ -56,10 +88,7 @@ function callDeepSeek(systemPrompt, userPayload) {
       resp.on('end', () => {
         if (resp.statusCode < 200 || resp.statusCode >= 300)
           return reject(new Error('DeepSeek HTTP ' + resp.statusCode + ': ' + raw.slice(0, 120)));
-        try {
-          const data = JSON.parse(raw);
-          resolve(data.choices[0].message.content);
-        } catch (e) { reject(e); }
+        try { resolve(JSON.parse(raw).choices[0].message.content); } catch (e) { reject(e); }
       });
     });
     req.on('error', reject);
@@ -69,57 +98,50 @@ function callDeepSeek(systemPrompt, userPayload) {
   });
 }
 
-/* ---------- 配对码 ---------- */
+/* ---------- 配对码与同步 ---------- */
 function randomCode() {
-  // 排除易混淆字符 0/O/1/I
-  const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ'; // 排除易混淆 0/O/1/I
   let s = '';
   for (let i = 0; i < 6; i++) s += chars[Math.floor(Math.random() * chars.length)];
   return s;
 }
+const enc = s => encodeURIComponent(s);
 
-/* ---------- 同步核心：字段级 last-write-wins ---------- */
 async function syncPush(body) {
   const { sync_code, device_id, changes } = body;
-  if (!sync_code || !device_id || !Array.isArray(changes))
-    throw new Error('push 参数不完整');
-
+  if (!sync_code || !device_id || !Array.isArray(changes)) throw new Error('push 参数不完整');
   const results = [];
   for (const ch of changes) {
     const { bucket, rec_key, payload, updated_at, deleted } = ch;
-    if (!bucket || !rec_key || typeof updated_at !== 'number')
-      continue;
-    // 先查该行现有版本
-    const q = await db.collection(C_SYNC).where({
-      sync_code, bucket, rec_key
-    }).limit(1).get();
-    const old = q.data && q.data[0];
-    if (old && old.updated_at > updated_at) {
+    if (!bucket || !rec_key || typeof updated_at !== 'number') continue;
+    const q = 'sync_code=eq.' + enc(sync_code) + '&bucket=eq.' + enc(bucket) +
+              '&rec_key=eq.' + enc(rec_key) + '&select=id,updated_at&limit=1';
+    const old = await pgRequest('GET', 'health_sync', q);
+    const prev = Array.isArray(old) ? old[0] : null;
+    if (prev && Number(prev.updated_at) > updated_at) {
       results.push({ bucket, rec_key, applied: false, reason: 'older' });
       continue;
     }
-    const doc = {
-      sync_code, device_id, bucket, rec_key,
-      payload: payload || {},
-      updated_at,
-      deleted: !!deleted,
-      server_time: Date.now()
-    };
-    if (old && old._id) await db.collection(C_SYNC).doc(old._id).update(doc);
-    else await db.collection(C_SYNC).add(doc);
+    const doc = { sync_code, device_id, bucket, rec_key,
+      payload: payload || {}, updated_at, deleted: !!deleted };
+    if (prev && prev.id) await pgRequest('PATCH', 'health_sync', 'id=eq.' + enc(prev.id), doc);
+    else await pgRequest('POST', 'health_sync', '', doc, { 'Prefer': 'return=minimal' });
     results.push({ bucket, rec_key, applied: true });
   }
-  // 刷新配对活跃时间
-  try { await db.collection(C_PAIR).doc(sync_code).update({ last_seen: Date.now() }); } catch (e) {}
+  try {
+    await pgRequest('PATCH', 'sync_pairs', 'sync_code=eq.' + enc(sync_code),
+      { last_seen: new Date().toISOString() });
+  } catch (e) { /* 配对记录不存在不影响主流程 */ }
   return results;
 }
 
 async function syncPull(body) {
   const { sync_code, since } = body;
   if (!sync_code) throw new Error('pull 缺少 sync_code');
-  const q = await db.collection(C_SYNC).where({ sync_code }).limit(1000).get();
-  const rows = (q.data || []).filter(r => !since || r.updated_at > since);
-  return rows.map(r => ({
+  let q = 'sync_code=eq.' + enc(sync_code) + '&select=bucket,rec_key,payload,updated_at,deleted&limit=1000';
+  if (since) q += '&updated_at=gt.' + enc(String(since));
+  const rows = await pgRequest('GET', 'health_sync', q);
+  return (Array.isArray(rows) ? rows : []).map(r => ({
     bucket: r.bucket, rec_key: r.rec_key, payload: r.payload,
     updated_at: r.updated_at, deleted: !!r.deleted
   }));
@@ -127,37 +149,40 @@ async function syncPull(body) {
 
 async function syncCreate(body) {
   const code = body.force_code || randomCode();
-  const q = await db.collection(C_PAIR).where({ sync_code: code }).limit(1).get();
-  if (q.data && q.data.length) {
-    if (!body.force_code) return syncCreate({}); // 碰撞则重抽
+  const exist = await pgRequest('GET', 'sync_pairs',
+    'sync_code=eq.' + enc(code) + '&select=sync_code&limit=1');
+  if (Array.isArray(exist) && exist.length) {
+    if (!body.force_code) return syncCreate({});
     return { sync_code: code, reused: true };
   }
-  await db.collection(C_PAIR).add({ sync_code: code, created_at: Date.now(), last_seen: Date.now() });
+  await pgRequest('POST', 'sync_pairs', '',
+    { sync_code: code, created_at: new Date().toISOString(), last_seen: new Date().toISOString() },
+    { 'Prefer': 'return=minimal' });
   return { sync_code: code, reused: false };
 }
 
-/* ---------- HTTP 入口 ---------- */
-exports.main = async (event, context) => {
-  const res = context.res;
-  if (!res) return { code: 400, msg: '需通过 HTTP 访问方式调用' };
+/* ---------- HTTP server（监听 9000） ---------- */
+const server = http.createServer(async (req, res) => {
+  if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
+  const pathname = new URL(req.url || '/', 'http://127.0.0.1').pathname;
   try {
-    const body = readBody(event);
-    const action = (event.path || '').split('/').filter(Boolean).pop() || body.action;
-
-    if (action === 'ai') {
+    if (req.method !== 'POST') return sendJson(res, 405, { ok: false, error: 'method not allowed' });
+    const body = await readJsonBody(req);
+    if (pathname.endsWith('/ai')) {
       if (!body.system || !body.payload) throw new Error('ai 参数不完整');
-      const text = await callDeepSeek(body.system, body.payload);
-      return json(res, 200, { ok: true, text });
+      return sendJson(res, 200, { ok: true, text: await callDeepSeek(body.system, body.payload) });
     }
-    if (action === 'sync') {
-      const op = body.op;
-      if (op === 'create') return json(res, 200, { ok: true, data: await syncCreate(body) });
-      if (op === 'push')  return json(res, 200, { ok: true, data: await syncPush(body) });
-      if (op === 'pull')  return json(res, 200, { ok: true, data: await syncPull(body) });
+    if (pathname.endsWith('/sync')) {
+      if (body.op === 'create') return sendJson(res, 200, { ok: true, data: await syncCreate(body) });
+      if (body.op === 'push')  return sendJson(res, 200, { ok: true, data: await syncPush(body) });
+      if (body.op === 'pull')  return sendJson(res, 200, { ok: true, data: await syncPull(body) });
       throw new Error('未知 sync op');
     }
-    return json(res, 404, { ok: false, error: 'unknown action' });
+    if (pathname === '/' || pathname === '/health') return sendJson(res, 200, { ok: true, service: 'bio-api' });
+    return sendJson(res, 404, { ok: false, error: 'not found' });
   } catch (e) {
-    return json(res, 500, { ok: false, error: e.message || String(e) });
+    return sendJson(res, 500, { ok: false, error: e.message || String(e) });
   }
-};
+});
+
+server.listen(9000, '0.0.0.0');
